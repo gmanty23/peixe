@@ -9,7 +9,7 @@ output
 pretrained/
 workspace
 workspace/
-processing_GUI/cache_intermedio
+processing_GUI/procesamiento/cache
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
