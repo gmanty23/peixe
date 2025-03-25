@@ -78,7 +78,7 @@ def extraer_imagenes(video_path, output_path, progress_callback=None, num_proces
         vid.release()
         
         # Crear el directorio de salida
-        images_og_path = os.path.join(output_path, "images_og")
+        images_og_path = os.path.join(output_path, "imagenes_og")
         if not os.path.exists(images_og_path):
             os.makedirs(images_og_path)
             
@@ -170,7 +170,7 @@ def redimensionar_imagenes(input_path, output_path, ancho, alto, progress_callba
             return None
         
         # Crear el directorio de salida
-        images_resized_path = os.path.join(output_path, "images_resized")
+        images_resized_path = os.path.join(output_path, "imagenes_resized")
         if not os.path.exists(images_resized_path):
             os.makedirs(images_resized_path)    
         
@@ -231,12 +231,12 @@ def redimensionar_imagenes(input_path, output_path, ancho, alto, progress_callba
 
 # --------------------- FUNCIONES PARA ATENUAR EL FONDO DE LAS IMÁGENES ---------------------
 # Función que calcula la mediana de un grupo de frames
-def calcular_mediana_segmento(input_path, imagenes, id_segmento, progress_queue, output_path):
+def calcular_mediana_segmento(input_path, imagenes_grupo, id_segmento, progress_queue, output_path):
     try:
         
         imagenes_segmento = [] # Buffer temporal para el grupo 
 
-        for i, img_name in enumerate(imagenes):
+        for i, img_name in enumerate(imagenes_grupo):
             img_path = os.path.join(input_path, img_name)
             img = cv2.imread(img_path)
             if img is not None:
@@ -282,7 +282,7 @@ def calcular_mediana(input_path,sizeGrupo,total_imagenes,imagenes, progress_call
         # Crear una cola para manejar el progreso
         progress_queue = multiprocessing.Queue()
 
-        # Dividir las imágenes en grupos de tamaño group_size
+        # Dividir las imágenes en grupos de tamaño group_size de manera aleatoria, para no estar sesgadas por la continuaidad de las secuencias
         random.shuffle(imagenes)
         grupos_imagenes = [imagenes[i:i + sizeGrupo] for i in range(0, total_imagenes, sizeGrupo)]
 
@@ -337,7 +337,7 @@ def calcular_mediana(input_path,sizeGrupo,total_imagenes,imagenes, progress_call
 
 
 # Función principal que atenúa el fondo de las imágenes
-def atenuar_fondo_imagenes(input_path, output_path, sizeGrupo, progress_callback=None, num_procesos=None):
+def atenuar_fondo_imagenes(input_path, output_path, sizeGrupo, factor_at, umbral_dif, apertura_flag, cierre_flag, apertura_kernel_size, cierre_kernel_size, progress_callback=None, num_procesos=None):
     try:
         
         start_time = time.time()
@@ -350,23 +350,70 @@ def atenuar_fondo_imagenes(input_path, output_path, sizeGrupo, progress_callback
         if total_imagenes == 0:
             print("Error: No se encontraron imágenes en el directorio de entrada.")
             return None
-        
-        # Crear el directorio de salida
-        images_wo_background_path = os.path.join(output_path, "images_wo_background")
-        if not os.path.exists(images_wo_background_path):
-            os.makedirs(images_wo_background_path)    
-        
-        # Calcular el fondo del video a través de un análisis de mediana
+           
+        # Calcular el fondo del video a través de un análisis de medianas
         fondo_final = calcular_mediana(input_path,sizeGrupo,total_imagenes,imagenes, progress_callback, num_procesos)
-        debugpy.breakpoint()
 
-    
+        imagenes.sort()  # Ordenar antes de procesar
+
+        # Crear los directorios de salida
+        output_path_imagenes_diferencias = os.path.join(output_path, "imagenes_diferencias")
+        if not os.path.exists(output_path_imagenes_diferencias):
+            os.makedirs(output_path_imagenes_diferencias)
+        output_path_imagenes_fondo_at =  os.path.join(output_path, "imagenes_fondo_atenuado")
+        if not os.path.exists(output_path_imagenes_fondo_at):
+            os.makedirs(output_path_imagenes_fondo_at)
+
+        if progress_callback:
+                progress_callback(0)
+
+        progreso_porcentaje = 0
+        
+
+
+        # Procesar imagenes restando el fondo
+        for i, img_name in enumerate(imagenes):
+            img_path = os.path.join(input_path, img_name)
+            img = cv2.imread(img_path)
+            if img is not None:
+                # Calcular la diferencia entre la imagen y el fondo
+                diferencia = cv2.absdiff(img, fondo_final)
+                # Convertir la diferencia a escala de grises
+                diferencia_gris = cv2.cvtColor(diferencia, cv2.COLOR_BGR2GRAY)
+                # Aplicar umbralización para obtener una máscara binaria
+                _, diferencia_umbral = cv2.threshold(diferencia_gris, umbral_dif, 255, cv2.THRESH_BINARY)
+                # Guardar las imágenes de las diferencias 
+                cv2.imwrite(os.path.join(output_path_imagenes_diferencias, f'diferencia_{i:04d}.jpg'), diferencia_umbral)
+                #Si seleccionado, aplicar apertura morfológica para eliminar ruido impulsivo 
+                if apertura_flag:
+                    apertura_kernel = np.ones(apertura_kernel_size, np.uint8)
+                    diferencia_umbral = cv2.morphologyEx(diferencia_umbral, cv2.MORPH_OPEN, apertura_kernel)
+                #Si seleccionado, aplicar cierre morfológico para rellenar huecos en los peces
+                if cierre_flag:
+                    cierre_kernel = np.ones(cierre_kernel_size, np.uint8)
+                    diferencia_umbral = cv2.morphologyEx(diferencia_umbral, cv2.MORPH_CLOSE, cierre_kernel)
+                # Obtener imágenes con el fondo atenuado
+                # Crear una máscara invertida para atenuar el fondo (donde no hay peces)
+                fondo_mask = cv2.bitwise_not(diferencia_umbral)
+                 #Atenuar el fondo multiplicando el fondo por el factor de atenuación
+                fondo_atenuado = img * factor_at  # Apagar el fondo multiplicando por el factor de atenuación
+                # Crear la imagen final: las áreas con los peces se mantienen intactas, y las del fondo se atenúan
+                img_fondo_at = cv2.bitwise_and(img, img, mask=diferencia_umbral)  # Los peces se mantienen
+                img_fondo_at += cv2.bitwise_and(fondo_atenuado.astype(np.uint8), fondo_atenuado.astype(np.uint8), mask=fondo_mask)  # El fondo se atenúa
+                cv2.imwrite(os.path.join(output_path_imagenes_fondo_at, f'fondo_at_{i:04d}.jpg'), img_fondo_at)
+                
+          
+                # Actualizar el progreso
+                progreso_porcentaje = int(((i+1) / total_imagenes) * 100)
+                if progress_callback:
+                    progress_callback(progreso_porcentaje)
+        
         end_time = time.time()
     
         execution_time = end_time - start_time
-        print(f"Tiempo de ejecución de la reducción de resolucion de frames: {execution_time:.2f} segundos")
+        print(f"Tiempo de ejecución de la atenuacion del fondo: {execution_time:.2f} segundos")
 
-        return fondo_final
+        return None
 
     except Exception as e:
         print(f"Error en el proceso principal: {e}")
