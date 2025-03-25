@@ -35,10 +35,13 @@ class WorkerThread(QThread):
         try:
             # Etapa 1: Extraer imágenes del video 
             self.etapa_actual_signal.emit("Extrayendo imágenes del video...")
-            images_path = extraer_imagenes(self.video_path, self.output_path, progress_callback=lambda p: self.progreso_especifico_signal.emit(p))
             if self.cancelar_flag:
                 self.etapa_actual_signal.emit("Preprocesado cancelado.")
                 return
+            if self.video_path is None:
+                    self.etapa_actual_signal.emit("Error al extraer las imágenes.")
+                    return
+            images_path = extraer_imagenes(self.video_path, self.output_path, progress_callback=lambda p: self.progreso_especifico_signal.emit(p))
             if images_path is None:
                     self.etapa_actual_signal.emit("Error al extraer las imágenes.")
                     return
@@ -265,10 +268,10 @@ class VentanaPreprocesado(QWidget):
         self.input_umbral_dif.setEnabled(enabled)
         self.checkbox_apertura.setEnabled(enabled)
         self.checkbox_cierre.setEnabled(enabled)
-        self.apertura_kernel_width.setEnabled(enabled and self.checkbox_apertura.isChecked())
-        self.apertura_kernel_height.setEnabled(enabled and self.checkbox_apertura.isChecked())
-        self.cierre_kernel_width.setEnabled(enabled and self.checkbox_cierre.isChecked())
-        self.cierre_kernel_height.setEnabled(enabled and self.checkbox_cierre.isChecked())
+        self.apertura_kernel_width.setEnabled(enabled)
+        self.apertura_kernel_height.setEnabled(enabled)
+        self.cierre_kernel_width.setEnabled(enabled)
+        self.cierre_kernel_height.setEnabled(enabled)
         
     
     # Funcion para seleccionar el archivo de video

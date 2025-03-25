@@ -336,42 +336,16 @@ def calcular_mediana(input_path,sizeGrupo,total_imagenes,imagenes, progress_call
         print(f"Error en el cálculo de la mediana en el proceso principal: {e}")
 
 
-# Función principal que atenúa el fondo de las imágenes
-def atenuar_fondo_imagenes(input_path, output_path, sizeGrupo, factor_at, umbral_dif, apertura_flag, cierre_flag, apertura_kernel_size, cierre_kernel_size, progress_callback=None, num_procesos=None):
+# Función que realiza el procesamiento de atenuacion de fondo en cada segmento
+def atenuar_fondo_imagenes_segmento(input_path, output_path, imagenes, fondo_final, factor_at, umbral_dif, 
+                                  apertura_flag, cierre_flag, apertura_kernel_size, cierre_kernel_size, 
+                                  id_segmento, progress_queue):
     try:
-        
-        start_time = time.time()
-        
-        print("El input path es: ", input_path)
-
-        # Obtener la lista de imágenes a redimensionar
-        imagenes = [f for f in os.listdir(input_path) if f.endswith(".jpg")]
-        total_imagenes = len(imagenes)
-        if total_imagenes == 0:
-            print("Error: No se encontraron imágenes en el directorio de entrada.")
-            return None
-           
-        # Calcular el fondo del video a través de un análisis de medianas
-        fondo_final = calcular_mediana(input_path,sizeGrupo,total_imagenes,imagenes, progress_callback, num_procesos)
-
-        imagenes.sort()  # Ordenar antes de procesar
-
-        # Crear los directorios de salida
         output_path_imagenes_diferencias = os.path.join(output_path, "imagenes_diferencias")
-        if not os.path.exists(output_path_imagenes_diferencias):
-            os.makedirs(output_path_imagenes_diferencias)
-        output_path_imagenes_fondo_at =  os.path.join(output_path, "imagenes_fondo_atenuado")
-        if not os.path.exists(output_path_imagenes_fondo_at):
-            os.makedirs(output_path_imagenes_fondo_at)
-
-        if progress_callback:
-                progress_callback(0)
-
-        progreso_porcentaje = 0
+        output_path_imagenes_fondo_at = os.path.join(output_path, "imagenes_fondo_atenuado")
         
-
-
-        # Procesar imagenes restando el fondo
+        total_imagenes_segmento = len(imagenes)
+        
         for i, img_name in enumerate(imagenes):
             img_path = os.path.join(input_path, img_name)
             img = cv2.imread(img_path)
@@ -382,40 +356,111 @@ def atenuar_fondo_imagenes(input_path, output_path, sizeGrupo, factor_at, umbral
                 diferencia_gris = cv2.cvtColor(diferencia, cv2.COLOR_BGR2GRAY)
                 # Aplicar umbralización para obtener una máscara binaria
                 _, diferencia_umbral = cv2.threshold(diferencia_gris, umbral_dif, 255, cv2.THRESH_BINARY)
-                # Guardar las imágenes de las diferencias 
-                cv2.imwrite(os.path.join(output_path_imagenes_diferencias, f'diferencia_{i:04d}.jpg'), diferencia_umbral)
-                #Si seleccionado, aplicar apertura morfológica para eliminar ruido impulsivo 
+                
+                # Guardar diferencia
+                cv2.imwrite(os.path.join(output_path_imagenes_diferencias, f'diferencia_{img_name.split("_")[1]}'), diferencia_umbral)
+                
+                # Operaciones morfológicas, si se han seleccionado
                 if apertura_flag:
                     apertura_kernel = np.ones(apertura_kernel_size, np.uint8)
                     diferencia_umbral = cv2.morphologyEx(diferencia_umbral, cv2.MORPH_OPEN, apertura_kernel)
-                #Si seleccionado, aplicar cierre morfológico para rellenar huecos en los peces
                 if cierre_flag:
                     cierre_kernel = np.ones(cierre_kernel_size, np.uint8)
                     diferencia_umbral = cv2.morphologyEx(diferencia_umbral, cv2.MORPH_CLOSE, cierre_kernel)
-                # Obtener imágenes con el fondo atenuado
+                
+                # Atenuar fondo
                 # Crear una máscara invertida para atenuar el fondo (donde no hay peces)
                 fondo_mask = cv2.bitwise_not(diferencia_umbral)
-                 #Atenuar el fondo multiplicando el fondo por el factor de atenuación
-                fondo_atenuado = img * factor_at  # Apagar el fondo multiplicando por el factor de atenuación
+                # Atenuar el fondo multiplicando el fondo por el factor de atenuación seleccionado
+                fondo_atenuado = img * factor_at
                 # Crear la imagen final: las áreas con los peces se mantienen intactas, y las del fondo se atenúan
-                img_fondo_at = cv2.bitwise_and(img, img, mask=diferencia_umbral)  # Los peces se mantienen
-                img_fondo_at += cv2.bitwise_and(fondo_atenuado.astype(np.uint8), fondo_atenuado.astype(np.uint8), mask=fondo_mask)  # El fondo se atenúa
-                cv2.imwrite(os.path.join(output_path_imagenes_fondo_at, f'fondo_at_{i:04d}.jpg'), img_fondo_at)
+                img_fondo_at = cv2.bitwise_and(img, img, mask=diferencia_umbral)
+                img_fondo_at += cv2.bitwise_and(fondo_atenuado.astype(np.uint8), fondo_atenuado.astype(np.uint8), mask=fondo_mask)
                 
-          
-                # Actualizar el progreso
-                progreso_porcentaje = int(((i+1) / total_imagenes) * 100)
-                if progress_callback:
-                    progress_callback(progreso_porcentaje)
+                # Guardar resultado
+                cv2.imwrite(os.path.join(output_path_imagenes_fondo_at, f'fondo_at_{img_name.split("_")[1]}'), img_fondo_at)
+                
+                # Enviar progreso
+                progress = int(((i+1) / total_imagenes_segmento) * 100)
+                progress_queue.put((id_segmento, progress))
+                
+        print(f"Proceso {id_segmento} terminado correctamente.")
         
-        end_time = time.time()
-    
-        execution_time = end_time - start_time
-        print(f"Tiempo de ejecución de la atenuacion del fondo: {execution_time:.2f} segundos")
-
-        return None
-
     except Exception as e:
-        print(f"Error en el proceso principal: {e}")
+        print(f"Error en la atenuacion de fondo en el proceso {id_segmento}: {e}")
+
+
+
+# Función principal que atenúa el fondo de las imágenes
+def atenuar_fondo_imagenes(input_path, output_path, sizeGrupo, factor_at, umbral_dif, 
+                          apertura_flag, cierre_flag, apertura_kernel_size, cierre_kernel_size, 
+                          progress_callback=None, num_procesos=None):
+    try:
+        start_time = time.time()
+        
+        # Configuración de multiprocessing
+        if num_procesos is None:
+            num_procesos = multiprocessing.cpu_count()
+            
+        # Obtener y ordenar imágenes
+        imagenes = [f for f in os.listdir(input_path) if f.endswith(".jpg")]
+        imagenes.sort()
+        total_imagenes = len(imagenes)
+        if total_imagenes == 0:
+            print("Error: No se encontraron imágenes.")
+            return None
+            
+        # Calcular fondo 
+        fondo_final = calcular_mediana(input_path, sizeGrupo, total_imagenes, imagenes, progress_callback, num_procesos)
+        
+        # Crear directorios de salida
+        os.makedirs(os.path.join(output_path, "imagenes_diferencias"), exist_ok=True)
+        os.makedirs(os.path.join(output_path, "imagenes_fondo_atenuado"), exist_ok=True)
+        
+        # Crear cola de progreso
+        progress_queue = multiprocessing.Queue()
+        
+        # Dividir trabajo
+        segment_size = total_imagenes // num_procesos
+        procesos = []
+        
+        for i in range(num_procesos):
+            inicio = i * segment_size
+            fin = (i+1) * segment_size if i < num_procesos - 1 else total_imagenes
+            segmento = imagenes[inicio:fin]
+            
+            p = multiprocessing.Process(
+                target=atenuar_fondo_imagenes_segmento,
+                args=(input_path, output_path, segmento, fondo_final, factor_at, umbral_dif,
+                      apertura_flag, cierre_flag, apertura_kernel_size, cierre_kernel_size,
+                      i, progress_queue)
+            )
+            procesos.append(p)
+            p.start()
+        
+        # Manejar progreso
+        progreso_total = [0] * num_procesos
+        while any(p.is_alive() for p in procesos):
+            while not progress_queue.empty():
+                segment_id, progress = progress_queue.get()
+                progreso_total[segment_id] = progress
+                progreso_promedio = int(sum(progreso_total) / num_procesos)
+                if progress_callback:
+                    progress_callback(progreso_promedio)
+        
+        # Limpiar y esperar
+        while not progress_queue.empty():
+            progress_queue.get()
+            
+        for p in procesos:
+            p.join()
+            
+        end_time = time.time()
+        print(f"Tiempo ejecución atenuación fondo: {end_time - start_time:.2f} segundos")
+        
+        return None
+        
+    except Exception as e:
+        print(f"Error en la atenuación del fondo en el proceso principal: {e}")
     
         
