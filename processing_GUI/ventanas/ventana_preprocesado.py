@@ -3,7 +3,8 @@ from PySide6.QtCore import Qt, QThread, Signal, QSettings
 from PySide6.QtGui import QImage, QPixmap
 from processing_GUI.procesamiento.preprocesado import  extraer_imagenes, redimensionar_imagenes, atenuar_fondo_imagenes
 import debugpy
-import cv2
+import os
+import shutil   
 
 class WorkerThread(QThread):
     # Señales para el feedback del progreso del procesado
@@ -68,8 +69,18 @@ class WorkerThread(QThread):
                     self.etapa_actual_signal.emit("Error en el directoro de las imágenes")
                 self.etapa_actual_signal.emit("Iniciando la atenuación del fondo...")
                 debugpy.breakpoint()
-                atenuar_fondo_imagenes(images_path, self.output_path, self.sizeGrupo, self.factor_at, self.umbral_dif, self.apertura_flag, self.cierre_flag, self.apertura_kernel_size, self.cierre_kernel_size, progress_callback=lambda p: self.progreso_especifico_signal.emit(p))
+                images_path = atenuar_fondo_imagenes(images_path, self.output_path, self.sizeGrupo, self.factor_at, self.umbral_dif, self.apertura_flag, self.cierre_flag, self.apertura_kernel_size, self.cierre_kernel_size, progress_callback_especifico=lambda p: self.progreso_especifico_signal.emit(p), progress_callback_etapa=lambda p: self.etapa_actual_signal.emit(p))
+            
+
+            # Paso 4: Establecer el directorio del ultimpo procesamiento realizado como el directorio final
+            images_final_path = os.path.join(self.output_path, "images")
+            if os.path.exists(images_final_path):
+                shutil.rmtree(images_final_path)
+            os.rename(images_path, images_final_path) #Crea el directorio de salida si este no existe
             self.progreso_general_signal.emit(100)
+
+
+
             
 
 

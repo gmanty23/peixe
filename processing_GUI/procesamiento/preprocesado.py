@@ -267,7 +267,7 @@ def calcular_mediana_segmento(input_path, imagenes_grupo, id_segmento, progress_
 
 
 # Función que calcula la mediana final a partir de las medianas intermedias con el objetivo de tener una aproximación del fondo estático de la imagen
-def calcular_mediana(input_path,sizeGrupo,total_imagenes,imagenes, progress_callback=None, num_procesos=None):
+def calcular_mediana(input_path,sizeGrupo,total_imagenes,imagenes, progress_callback_especifico=None, num_procesos=None):
     try:
 
         # Detectar el número de procesadores disponibles
@@ -306,8 +306,8 @@ def calcular_mediana(input_path,sizeGrupo,total_imagenes,imagenes, progress_call
                 progress_queue.get()
                 progreso += 1
                 progreso_porcentaje = int((progreso / total_medianas) * 100)
-                if progress_callback:
-                    progress_callback(progreso_porcentaje)
+                if progress_callback_especifico:
+                    progress_callback_especifico(progreso_porcentaje)
 
         # Esperar a que todos los procesos terminen
         for p in procesos:
@@ -325,8 +325,8 @@ def calcular_mediana(input_path,sizeGrupo,total_imagenes,imagenes, progress_call
             #debugpy.breakpoint()
             print("Mediana final calculada ")
             # Actualizar progreso al 100%
-            if progress_callback:
-                progress_callback(100)
+            if progress_callback_especifico:
+                progress_callback_especifico(100)
 
             return fondo_final
         else:
@@ -394,7 +394,7 @@ def atenuar_fondo_imagenes_segmento(input_path, output_path, imagenes, fondo_fin
 # Función principal que atenúa el fondo de las imágenes
 def atenuar_fondo_imagenes(input_path, output_path, sizeGrupo, factor_at, umbral_dif, 
                           apertura_flag, cierre_flag, apertura_kernel_size, cierre_kernel_size, 
-                          progress_callback=None, num_procesos=None):
+                          progress_callback_especifico=None, progress_callback_etapa=None, num_procesos=None):
     try:
         start_time = time.time()
         
@@ -410,10 +410,12 @@ def atenuar_fondo_imagenes(input_path, output_path, sizeGrupo, factor_at, umbral
             print("Error: No se encontraron imágenes.")
             return None
             
-        # Calcular fondo 
-        fondo_final = calcular_mediana(input_path, sizeGrupo, total_imagenes, imagenes, progress_callback, num_procesos)
+        # Calcular fondo y avisar de la etapa
+        if progress_callback_etapa:
+            progress_callback_etapa("Calculando fondo...")
+        fondo_final = calcular_mediana(input_path, sizeGrupo, total_imagenes, imagenes, progress_callback_especifico, num_procesos)
         
-        # Crear directorios de salida
+        # Crear directorios de salida si no existen
         os.makedirs(os.path.join(output_path, "imagenes_diferencias"), exist_ok=True)
         os.makedirs(os.path.join(output_path, "imagenes_fondo_atenuado"), exist_ok=True)
         
@@ -424,6 +426,10 @@ def atenuar_fondo_imagenes(input_path, output_path, sizeGrupo, factor_at, umbral
         segment_size = total_imagenes // num_procesos
         procesos = []
         
+        # Procesar cada segmento y avisa de la etapa
+        if progress_callback_etapa:
+            progress_callback_etapa("Atenuando fondo...")
+
         for i in range(num_procesos):
             inicio = i * segment_size
             fin = (i+1) * segment_size if i < num_procesos - 1 else total_imagenes
@@ -445,8 +451,8 @@ def atenuar_fondo_imagenes(input_path, output_path, sizeGrupo, factor_at, umbral
                 segment_id, progress = progress_queue.get()
                 progreso_total[segment_id] = progress
                 progreso_promedio = int(sum(progreso_total) / num_procesos)
-                if progress_callback:
-                    progress_callback(progreso_promedio)
+                if progress_callback_especifico:
+                    progress_callback_especifico(progreso_promedio)
         
         # Limpiar y esperar
         while not progress_queue.empty():
@@ -457,8 +463,10 @@ def atenuar_fondo_imagenes(input_path, output_path, sizeGrupo, factor_at, umbral
             
         end_time = time.time()
         print(f"Tiempo ejecución atenuación fondo: {end_time - start_time:.2f} segundos")
+
+        output_path_fondo_atenuado = os.path.join(output_path, "imagenes_fondo_atenuado")
         
-        return None
+        return output_path_fondo_atenuado
         
     except Exception as e:
         print(f"Error en la atenuación del fondo en el proceso principal: {e}")
