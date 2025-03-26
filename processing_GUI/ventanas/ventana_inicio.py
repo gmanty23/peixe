@@ -1,7 +1,8 @@
 from PySide6.QtWidgets import QWidget, QPushButton, QVBoxLayout, QLabel
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
-from processing_GUI.ventanas.ventana_preprocesado import VentanaPreprocesado  # Importar la ventana que creamos antes
+from processing_GUI.ventanas.ventana_preprocesado import VentanaPreprocesado  
+from processing_GUI.ventanas.ventana_etiquetado import VentanaEtiquetado
 
 class VentanaInicio(QWidget):
     def __init__(self):
@@ -50,9 +51,13 @@ class VentanaInicio(QWidget):
         
     def postprocesado(self):
         print("Postprocesado")
+
     
     def etiquetado(self):
         print("Etiquetado")
+        self.ventana_etiquetado = VentanaEtiquetado()
+        self.ventana_etiquetado.show()
+    
     
     
     
