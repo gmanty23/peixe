@@ -80,19 +80,18 @@ class VentanaInicio(QWidget):
         self.setLayout(layout)
         
     def preprocesado(self):
-        self.ventana_preprocesado = VentanaPreprocesado()
-        self.ventana_preprocesado.ventana_inicio = self
+        self.ventana_preprocesado = VentanaPreprocesado(parent=self)
         self.ventana_preprocesado.show()
-        self.hide()  
+        self.hide()
         
     def postprocesado(self):
         print("Postprocesado")
         # A implementar
     
     def etiquetado(self):
-        self.ventana_etiquetado = VentanaEtiquetado()
+        self.ventana_etiquetado = VentanaEtiquetado(parent=self)
         self.ventana_etiquetado.show()
-        self.hide()  # Oculta la ventana actual
+        self.hide()
 
 
 

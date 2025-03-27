@@ -1,11 +1,16 @@
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QPushButton, QFileDialog, 
                               QCheckBox, QLineEdit, QHBoxLayout, QProgressBar, QGridLayout,
                               QGroupBox, QSizePolicy)
+from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtCore import Qt, QThread, Signal, QSettings
 from processing_GUI.procesamiento.preprocesado import  extraer_imagenes, redimensionar_imagenes, atenuar_fondo_imagenes
 import debugpy
 import os
 import shutil   
+import cv2
+import glob
+from processing_GUI.ventanas.ventana_resultados_preprocesado import VentanaResultados
+
 
 class WorkerThread(QThread):
     # Señales para el feedback del progreso del procesado
@@ -95,8 +100,9 @@ class WorkerThread(QThread):
 
 
 class VentanaPreprocesado(QWidget):
-    def __init__(self):
+    def __init__(self, parent=None):
         super().__init__()
+        self.ventana_inicio = parent
         self.settings = QSettings("preprocesado", "preprocesado")
         self.setup_ui() 
         self.setup_styles()
@@ -247,9 +253,9 @@ class VentanaPreprocesado(QWidget):
 
         # Footer con botón Atrás 
         footer = QHBoxLayout()
-        footer.addStretch()
         self.boton_atras = QPushButton("Atrás")
         footer.addWidget(self.boton_atras)
+        footer.addStretch()
         main_layout.addLayout(footer)
         self.boton_atras.clicked.connect(self.volver_a_inicio)
 
@@ -420,7 +426,7 @@ class VentanaPreprocesado(QWidget):
                 self.worker_thread.progreso_general_signal.connect(self.barra_progreso_etapas.setValue)
                 self.worker_thread.progreso_especifico_signal.connect(self.barra_progreso_especifica.setValue)
                 # Conectar una señal para recibir la imagen procesada y mostrarla
-                self.worker_thread.finished.connect(lambda: self.mostrar_resultado())
+                self.worker_thread.finished.connect(lambda: self.mostrar_resultado(output_path))
                 
                 self.worker_thread.start()
                 
@@ -430,20 +436,20 @@ class VentanaPreprocesado(QWidget):
             
             
     # Función para mostrar el resultado del preprocesado
-    def mostrar_resultado(self):
+    def mostrar_resultado(self, output_path):
         self.boton_iniciar_preprocesado.setText("Iniciar Preprocesado")
-        #Mostrar la imagen procesada 
-        # if imagen_procesada is not None:
-        #     # Convertir de BGR a RGB
-        #     imagen_rgb = cv2.cvtColor(imagen_procesada, cv2.COLOR_BGR2RGB)
-        #     # Obtener dimensiones y convertir a QImage
-        #     height, width, channel = imagen_rgb.shape
-        #     bytes_per_line = 3 * width
-        #     q_img = QImage(imagen_rgb.data, width, height, bytes_per_line, QImage.Format_RGB888)
-        #     # Coonvertir a QPixmap y mostrar en el QLabel
-        #     pixmap = QPixmap.fromImage(q_img)
-        #     self.label_imagen_procesada.setPixmap(pixmap)
-        #     self.label_imagen_procesada.setAlignment(Qt.AlignCenter)
+        # Obtener rutas de los primeros frames
+        carpeta_original = os.path.join(output_path, "imagenes_og")
+        carpeta_procesada = os.path.join(output_path, "images")
+        frame_original = self.obtener_primer_frame(carpeta_original)
+        frame_procesado = self.obtener_primer_frame(carpeta_procesada)
+            
+        if frame_original and frame_procesado:
+            if not hasattr(self, 'ventana_comparacion'):
+                self.ventana_comparacion = VentanaResultados()
+        
+        self.ventana_comparacion.cargar_imagenes(frame_original, frame_procesado)
+        self.ventana_comparacion.show()
 
 
     # Función para volver a la ventana de inicio y cerrar la actual
@@ -452,7 +458,25 @@ class VentanaPreprocesado(QWidget):
         if hasattr(self, 'ventana_inicio'):
             self.ventana_inicio.show()  # Muestra la ventana de inicio
 
+    # Función para convertir una imagen de OpenCV a QPixmap
+    def cv2_to_pixmap(self, cv_img):
+        """Convierte imagen OpenCV a QPixmap"""
+        height, width, channel = cv_img.shape
+        bytes_per_line = 3 * width
+        q_img = QImage(cv_img.data, width, height, bytes_per_line, QImage.Format_RGB888).rgbSwapped()
+        return QPixmap.fromImage(q_img)
 
+    # Función para obtener el primer frame de una carpeta
+    def obtener_primer_frame(self, carpeta):
+        """Obtiene la ruta del primer archivo de imagen en una carpeta"""
+        formatos_validos = ('*.jpg', '*.jpeg', '*.png', '*.bmp', '*.tif')
+        archivos = []
+        
+        for formato in formatos_validos:
+            archivos.extend(glob.glob(os.path.join(carpeta, formato)))
+        
+        archivos.sort()  # Orden alfabético/numerico
+        return archivos[0] if archivos else None
 
 
 
