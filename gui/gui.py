@@ -509,9 +509,8 @@ class GUI(QWidget):
         self.close()
         command = [
             'python', 'interactive_demo.py',
-            '--video', '/home/gms/AnemoNAS/Videos/06-12-23-Lateral-50Peces/USCL2-115625-120125.mp4',
-            '--num_objects', '1',
-            '--workspace', '/home/gms/AnemoNAS/Workspace/06-12-23-Lateral-50Peces/USCL2-115625-120125/'
+            '--num_objects', f"{self.cfg['num_objects']}",
+            '--workspace', f"{self.cfg['workspace']}"
         ]
         
         # Ejecutar el comando
