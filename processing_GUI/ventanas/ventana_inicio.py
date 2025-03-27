@@ -16,7 +16,7 @@ class VentanaInicio(QWidget):
         # Crear el texto con el emoticono del pez
         self.texto_inicio = QLabel("🐟", self)
         self.texto_inicio.setAlignment(Qt.AlignCenter)
-        self.texto_inicio.setFont(QFont('Arial', 30))
+        self.texto_inicio.setFont(QFont('Arial', 50))
 
         # Crear los botones. 
         # El self le dice al botón (y a otros widgets) que la ventana es su contenedor. Esto es esencial para el manejo de la disposición de los widgets y la destrucción de los objetos cuando se cierra la ventana.

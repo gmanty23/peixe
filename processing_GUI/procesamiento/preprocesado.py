@@ -3,23 +3,25 @@ import numpy as np
 import os
 import multiprocessing
 import time
+import debugpy
+import random
 
 
 
 # --------------------- FUNCIONES PARA EXTRAER IMÁGENES DEL VIDEO ---------------------
 
 # Se va calculando tambien el progreso a mostrar en la barra de progreso 
-    # Comunicación entre Procesos:
+#     Comunicación entre Procesos:
 
-    #     Usaremos una multiprocessing.Queue para enviar el progreso de cada proceso secundario al proceso principal.
+#         Usaremos una multiprocessing.Queue para enviar el progreso de cada proceso secundario al proceso principal.
 
-    # Actualización de la Barra de Progreso:
+#     Actualización de la Barra de Progreso:
 
-    #     El proceso principal leerá los mensajes de la cola y actualizará la barra de progreso en la interfaz gráfica.
+#         El proceso principal leerá los mensajes de la cola y actualizará la barra de progreso en la interfaz gráfica.
 
-    # Cálculo del Progreso Total:
+#     Cálculo del Progreso Total:
 
-    #     El progreso total se calculará sumando el progreso de todos los procesos secundarios.
+#         El progreso total se calculará sumando el progreso de todos los procesos secundarios.
     
 # Función que extrae los frames de un segmento de un video y los guarda como imágenes numeradas en un directorio
 def extraer_imagenes_segmento(video_path, output_path, frame_inicial, frame_final,segment_id, progress_queue):
@@ -53,7 +55,7 @@ def extraer_imagenes_segmento(video_path, output_path, frame_inicial, frame_fina
         
         print(f"Proceso {segment_id} terminado correctamente.")
     except Exception as e:
-            print(f"Error en el proceso {segment_id}: {e}")
+            print(f"Error en la extracción de imágenes en el proceso {segment_id}: {e}")
 
 
 # Función que extrae los frames de un video y los guarda como imágenes numeradas en un directorio 
@@ -76,11 +78,11 @@ def extraer_imagenes(video_path, output_path, progress_callback=None, num_proces
         vid.release()
         
         # Crear el directorio de salida
-        images_og_path = os.path.join(output_path, "images_og")
+        images_og_path = os.path.join(output_path, "imagenes_og")
         if not os.path.exists(images_og_path):
             os.makedirs(images_og_path)
             
-        #Crear una cola para comnucair el progreso de los procesos
+        #Crear una cola para comunicar el progreso de los procesos
         progress_queue = multiprocessing.Queue()
             
         # Segmentar los videos en función del numero de procesadores
@@ -123,61 +125,7 @@ def extraer_imagenes(video_path, output_path, progress_callback=None, num_proces
         
         return images_og_path
     except Exception as e:
-        print(f"Error en el proceso principal: {e}")
-
-
-
-# # Función que extrae los frames de un video y los guarda como imágenes numeradas en un directorio
-# # Va calculando tambien el progreso a mostrar en la barra de progreso
-# def extraer_imagenes(video_path, output_path, cancelar_flag, progress_callback=None):
-
-#     start_time = time.time()
-    
-#     # Abrir el video
-#     vid = cv2.VideoCapture(video_path)
-#     if not vid.isOpened():
-#         print("Error: No se pudo abrir el video.")
-#         return None
-    
-#     # Crear el directorio de salida
-#     images_og_path = os.path.join(output_path, "images_og")
-#     if not os.path.exists(images_og_path):
-#         os.makedirs(images_og_path)
-    
-#     # Extraer los frames del video y guardarlos como imágenes
-#     total_frames = int(vid.get(cv2.CAP_PROP_FRAME_COUNT))
-#     frame_count = 0
-#     while True:
-#         if cancelar_flag:
-#             break
-#         ret, frame = vid.read()
-#         if not ret:
-#             break
-#         # Guardar el frame como imagen
-#         frame_filename = os.path.join(images_og_path, f"frame_{frame_count:04d}.jpg")
-#         cv2.imwrite(frame_filename, frame)
-#         #print(f"Frame {frame_count} guardado")
-#         frame_count += 1
-        
-#         if progress_callback:
-#             progress = int((frame_count / total_frames) * 100)
-#             progress_callback(progress)
-    
-#     # Liberar recursos
-#     vid.release()
-#     print(f"Imágenes extraídas y guardadas en: {images_og_path}")
-    
-    
-
-#     end_time = time.time()
-    
-#     execution_time = end_time - start_time
-#     print(f"Tiempo de ejecución de la extracción de frames: {execution_time:.2f} segundos")
-    
-    
-#     return images_og_path
-
-
+        print(f"Error en la extracción de imágenes el proceso principal: {e}")
 
 
 
@@ -187,8 +135,7 @@ def extraer_imagenes(video_path, output_path, progress_callback=None, num_proces
 
 def redimensionar_imagenes_segmento(input_path, output_path, imagenes, ancho, alto, id_segmento, progress_queue):
     try:
-        
-        
+
         total_imagenes_segmento = len(imagenes)
         for i, img_name in enumerate(imagenes):
             img_path = os.path.join(input_path, img_name)
@@ -201,8 +148,9 @@ def redimensionar_imagenes_segmento(input_path, output_path, imagenes, ancho, al
                 progress = int(((i+1) / total_imagenes_segmento) * 100)
                 progress_queue.put((id_segmento, progress))
         print(f"Proceso {id_segmento} terminado correctamente.")
+
     except Exception as e:
-        print(f"Error en el proceso {id_segmento}: {e}")
+        print(f"Error en el redimensionamiento de imagenes en el proceso {id_segmento}: {e}")
         
         
 def redimensionar_imagenes(input_path, output_path, ancho, alto, progress_callback=None, num_procesos=None):
@@ -222,7 +170,7 @@ def redimensionar_imagenes(input_path, output_path, ancho, alto, progress_callba
             return None
         
         # Crear el directorio de salida
-        images_resized_path = os.path.join(output_path, "images_resized")
+        images_resized_path = os.path.join(output_path, "imagenes_resized")
         if not os.path.exists(images_resized_path):
             os.makedirs(images_resized_path)    
         
@@ -262,177 +210,257 @@ def redimensionar_imagenes(input_path, output_path, ancho, alto, progress_callba
         for p in procesos:
             p.join()
             
+        
+ 
         print(f"Imágenes redimensionadas guardadas en: {images_resized_path}")
+
     
         end_time = time.time()
     
         execution_time = end_time - start_time
         print(f"Tiempo de ejecución de la reducción de resolucion de frames: {execution_time:.2f} segundos")
+
+        return images_resized_path
         
     except Exception as e:
-        print(f"Error en el proceso principal: {e}")
+        print(f"Error en el redimensionamiento de las imagenes en el proceso principal: {e}")
     
         
 
-# #Funcion para reducir la resolución del video a fullHD (1920x1080)
-# def reducir_resolucion_imagenes(input_path, output_path, width, height, cancelar_flag, progress_callback=None):
 
-#     start_time = time.time()
-    
-#     # Crear el directorio de salida
-#     images_resized_path = os.path.join(output_path, "images_resized")
-#     if not os.path.exists(images_resized_path):
-#         os.makedirs(images_resized_path)
-    
-#     # Obtener la lista de imágenes a redimensionar
-#     imagenes = [f for f in os.listdir(input_path) if f.endswith(".jpg")]
-#     total_images = len(imagenes)
-     
-#     # Procesar cada imagen
-#     for i, archivo in enumerate(imagenes):
-#         if cancelar_flag:
-#             break
+
+# --------------------- FUNCIONES PARA ATENUAR EL FONDO DE LAS IMÁGENES ---------------------
+# Función que calcula la mediana de un grupo de frames
+def calcular_mediana_segmento(input_path, imagenes_grupo, id_segmento, progress_queue, output_path):
+    try:
         
-#         img_path = os.path.join(input_path, archivo)
-#         img = cv2.imread(img_path)
-#         if img is not None:
-#             img_resized = cv2.resize(img, (width, height))
-#             img_resized_path = os.path.join(images_resized_path, archivo)
-#             cv2.imwrite(img_resized_path, img_resized)
+        imagenes_segmento = [] # Buffer temporal para el grupo 
+
+        for i, img_name in enumerate(imagenes_grupo):
+            img_path = os.path.join(input_path, img_name)
+            img = cv2.imread(img_path)
+            if img is not None:
+                imagenes_segmento.append(img)
+
+        if imagenes_segmento:
+            # Calcular la mediana del grupo
+            imagenes_array = np.array(imagenes_segmento)
+            mediana_grupo = np.median(imagenes_array, axis=0).astype(np.uint8)
             
-#             if progress_callback:
-#                 progress = int(((i+1) / total_images) * 100)
-#                 progress_callback(progress)
+            # Guardar la mediana del grupo en el subdirectorio con el nombre del grupo
+            mediana_grupo_path = os.path.join(output_path, f"mediana_grupo_{id_segmento+1}.jpg")
+            cv2.imwrite(mediana_grupo_path, mediana_grupo)
+            
+            print(f"Proceso {id_segmento}: Mediana del grupo calculada con éxito.")
+
+            # Enviar progreso - cada grupo completado es un paso
+            progress_queue.put(1)
+            
+            return mediana_grupo
+        else:
+            print(f"Error: No se pudieron cargar las imágenes del segmento {id_segmento}.")
+            return None
+        
+    except Exception as e:
+        print(f"Error en el cálculo de la mediana en el proceso {id_segmento}: {e}")
+
+
+
+# Función que calcula la mediana final a partir de las medianas intermedias con el objetivo de tener una aproximación del fondo estático de la imagen
+def calcular_mediana(input_path,sizeGrupo,total_imagenes,imagenes, progress_callback=None, num_procesos=None):
+    try:
+
+        # Detectar el número de procesadores disponibles
+        if num_procesos is None:
+            num_procesos = multiprocessing.cpu_count()
+
+        # Crear un directorio para almacenar las medianas intermedias
+        cache_path = "processing_GUI/procesamiento/cache/medianas_intermedias"
+        if not os.path.exists(cache_path):
+            os.makedirs(cache_path)
+
+        # Crear una cola para manejar el progreso
+        progress_queue = multiprocessing.Queue()
+
+        # Dividir las imágenes en grupos de tamaño group_size de manera aleatoria, para no estar sesgadas por la continuaidad de las secuencias
+        random.shuffle(imagenes)
+        grupos_imagenes = [imagenes[i:i + sizeGrupo] for i in range(0, total_imagenes, sizeGrupo)]
+
+        # Calcular el total de medianas para medir el progreso
+        total_medianas = len(grupos_imagenes) + 1 #Medianas intermedias y mediana final
+        progreso = 0
+
+        print(f"El video tiene {total_imagenes} frames en total, lo que serán {total_medianas} medianas intermedias")
+
+        # Crear los procesos para calcular las medianas intermedias
+        procesos = []
+        for i, imagenes_segmento in enumerate(grupos_imagenes):
+            # Crear y lanzar un proceso para calcular la mediana del segmento
+            p = multiprocessing.Process(target=calcular_mediana_segmento, args=(input_path, imagenes_segmento, i, progress_queue, cache_path))
+            procesos.append(p)
+            p.start()
+
+        # Monitorear el progreso de los procesos
+        while any(p.is_alive() for p in procesos):
+            while not progress_queue.empty():
+                progress_queue.get()
+                progreso += 1
+                progreso_porcentaje = int((progreso / total_medianas) * 100)
+                if progress_callback:
+                    progress_callback(progreso_porcentaje)
+
+        # Esperar a que todos los procesos terminen
+        for p in procesos:
+            p.join()
+
+        # Leer las medianas intermedias generadas por los procesos
+        medianas_intermedias = [cv2.imread(os.path.join(cache_path, f)) for f in os.listdir(cache_path) if f.endswith('.jpg')]
+        
+        if medianas_intermedias:
+            # Calcular la mediana final a partir de las medianas intermedias
+            array_medianas_intermedias = np.array(medianas_intermedias)
+            fondo_final = np.median(array_medianas_intermedias, axis=0).astype(np.uint8)
+            cv2.imwrite( "processing_GUI/procesamiento/cache/fondo_final/fondo_final.jpg", fondo_final)
+            # Guardar la imagen de la mediana final
+            #debugpy.breakpoint()
+            print("Mediana final calculada ")
+            # Actualizar progreso al 100%
+            if progress_callback:
+                progress_callback(100)
+
+            return fondo_final
+        else:
+            print("Error: No se pudieron calcular las medianas intermedias correctamente.")
+        
+    except Exception as e:
+        print(f"Error en el cálculo de la mediana en el proceso principal: {e}")
+
+
+# Función que realiza el procesamiento de atenuacion de fondo en cada segmento
+def atenuar_fondo_imagenes_segmento(input_path, output_path, imagenes, fondo_final, factor_at, umbral_dif, 
+                                  apertura_flag, cierre_flag, apertura_kernel_size, cierre_kernel_size, 
+                                  id_segmento, progress_queue):
+    try:
+        output_path_imagenes_diferencias = os.path.join(output_path, "imagenes_diferencias")
+        output_path_imagenes_fondo_at = os.path.join(output_path, "imagenes_fondo_atenuado")
+        
+        total_imagenes_segmento = len(imagenes)
+        
+        for i, img_name in enumerate(imagenes):
+            img_path = os.path.join(input_path, img_name)
+            img = cv2.imread(img_path)
+            if img is not None:
+                # Calcular la diferencia entre la imagen y el fondo
+                diferencia = cv2.absdiff(img, fondo_final)
+                # Convertir la diferencia a escala de grises
+                diferencia_gris = cv2.cvtColor(diferencia, cv2.COLOR_BGR2GRAY)
+                # Aplicar umbralización para obtener una máscara binaria
+                _, diferencia_umbral = cv2.threshold(diferencia_gris, umbral_dif, 255, cv2.THRESH_BINARY)
                 
-#     print(f"Imágenes redimensionadas guardadas en: {images_resized_path}")
-    
-#     end_time = time.time()
-    
-#     execution_time = end_time - start_time
-#     print(f"Tiempo de ejecución de la reducción de resolucion de frames: {execution_time:.2f} segundos")
-    
-    
-    
-#     return images_resized_path
-    
-    
-
-
-
-
-# #Función que calcula la mediana de un grupo de frames
-# def calcular_mediana_grupo(group_num, group_size, video_path):
-#     frames_group = []  # Buffer temporal para el grupo
-    
-#     # Abrir el video en cada proceso porque si no da error
-#     vid = cv2.VideoCapture(video_path)
-#     if not vid.isOpened():
-#         print(f"Error: No se pudo abrir el video en el proceso {group_num}.")
-#         return None
-    
-#     # Establecer el punto de inicio de lectura del grupo
-#     vid.set(cv2.CAP_PROP_POS_FRAMES, group_num * group_size)
-    
-#     # Leer y almacenar los frames del grupo
-#     for _ in range(group_size):
-#         ret, frame = vid.read()
-#         if not ret:
-#             break
-#         frames_group.append(frame)
-
-#     if len(frames_group) > 0:
-#         # Calcular la mediana del grupo
-#         frames_array = np.array(frames_group)
-#         group_median = np.median(frames_array, axis=0).astype(np.uint8)
+                # Guardar diferencia
+                cv2.imwrite(os.path.join(output_path_imagenes_diferencias, f'diferencia_{img_name.split("_")[1]}'), diferencia_umbral)
+                
+                # Operaciones morfológicas, si se han seleccionado
+                if apertura_flag:
+                    apertura_kernel = np.ones(apertura_kernel_size, np.uint8)
+                    diferencia_umbral = cv2.morphologyEx(diferencia_umbral, cv2.MORPH_OPEN, apertura_kernel)
+                if cierre_flag:
+                    cierre_kernel = np.ones(cierre_kernel_size, np.uint8)
+                    diferencia_umbral = cv2.morphologyEx(diferencia_umbral, cv2.MORPH_CLOSE, cierre_kernel)
+                
+                # Atenuar fondo
+                # Crear una máscara invertida para atenuar el fondo (donde no hay peces)
+                fondo_mask = cv2.bitwise_not(diferencia_umbral)
+                # Atenuar el fondo multiplicando el fondo por el factor de atenuación seleccionado
+                fondo_atenuado = img * factor_at
+                # Crear la imagen final: las áreas con los peces se mantienen intactas, y las del fondo se atenúan
+                img_fondo_at = cv2.bitwise_and(img, img, mask=diferencia_umbral)
+                img_fondo_at += cv2.bitwise_and(fondo_atenuado.astype(np.uint8), fondo_atenuado.astype(np.uint8), mask=fondo_mask)
+                
+                # Guardar resultado
+                cv2.imwrite(os.path.join(output_path_imagenes_fondo_at, f'fondo_at_{img_name.split("_")[1]}'), img_fondo_at)
+                
+                # Enviar progreso
+                progress = int(((i+1) / total_imagenes_segmento) * 100)
+                progress_queue.put((id_segmento, progress))
+                
+        print(f"Proceso {id_segmento} terminado correctamente.")
         
-#         # Guardar la mediana del grupo en el subdirectorio con el nombre del grupo
-#         group_filename = os.path.join("processing_GUI/cache_intermedio/medianas_intermedias", f"mediana_grupo_{group_num+1}.png")
-#         cv2.imwrite(group_filename, group_median)
+    except Exception as e:
+        print(f"Error en la atenuacion de fondo en el proceso {id_segmento}: {e}")
+
+
+
+# Función principal que atenúa el fondo de las imágenes
+def atenuar_fondo_imagenes(input_path, output_path, sizeGrupo, factor_at, umbral_dif, 
+                          apertura_flag, cierre_flag, apertura_kernel_size, cierre_kernel_size, 
+                          progress_callback=None, num_procesos=None):
+    try:
+        start_time = time.time()
         
-#         print(f"Proceso {group_num}: Mediana del grupo calculada con éxito.")
+        # Configuración de multiprocessing
+        if num_procesos is None:
+            num_procesos = multiprocessing.cpu_count()
+            
+        # Obtener y ordenar imágenes
+        imagenes = [f for f in os.listdir(input_path) if f.endswith(".jpg")]
+        imagenes.sort()
+        total_imagenes = len(imagenes)
+        if total_imagenes == 0:
+            print("Error: No se encontraron imágenes.")
+            return None
+            
+        # Calcular fondo 
+        fondo_final = calcular_mediana(input_path, sizeGrupo, total_imagenes, imagenes, progress_callback, num_procesos)
         
-#         return group_median
-#     else:
-#         return None
-    
-    
-    
-# # Función que maneja el proceso de la mediana final
-# def calcular_mediana_video(video_path):
-#     # Abrir el video
-#     vid = cv2.VideoCapture(video_path)
-
-#     # Verificar si el video se abrió correctamente
-#     if not vid.isOpened():
-#         print("Error: No se pudo abrir el video.")
-#         return
-
-#     # Parámetros
-#     total_frames = int(vid.get(cv2.CAP_PROP_FRAME_COUNT))  # Número total de frames en el video
-#     group_size = 40  # Tamaño de cada grupo de frames
-#     num_groups = total_frames // group_size  # Número de grupos
-#     print(f"El video tiene {total_frames} frames en total, lo que serán {num_groups} medianas intermedias")
-    
-#     # Usamos un Pool para paralelizar los cálculos de las medianas de los grupos
-#     with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:
-#         medianas_intermedias = list(
-#             pool.starmap(calcular_mediana_grupo, [(group_num, group_size, video_path) for group_num in range(num_groups)])
-#         )
-    
-#     # Filtrar las medianas válidas
-#     medianas_intermedias = [mediana for mediana in medianas_intermedias if mediana is not None]
-
-#     # Calcular la mediana final a partir de las medianas intermedias
-#     print("Calculando la mediana final...")
-#     median_frames_array = np.array(medianas_intermedias)
-#     final_background = np.median(median_frames_array, axis=0).astype(np.uint8)
-    
-#     output_path = "processing_GUI/cache_intermedio/fondo_median_final.png"
-#     cv2.imwrite(output_path, final_background)
-#     print("Fondo calculado con éxito")
-
-    
-#     vid.release()
-    
-#     return None
-
-
-# #Funcion para reducir la resolución del video a fullHD
-# def reducir_resolucion(video_path, output_path):
-#     print("El output path es: ", output_path)
-#     #Abrir el video
-#     print(f"Video Path: {video_path}") 
-#     vid = cv2.VideoCapture(video_path)
-#     if not vid.isOpened():
-#         print("Error: No se pudo abrir el video.")
-#         return
-    
-#     # Establecer el códec para guardar el nuevo video
-#     fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Usamos mp4 como formato de salida
-#     fps = vid.get(cv2.CAP_PROP_FPS)  # Obtenemos el fps original del video
-#     width, height = 1920, 1080  # Resolución FullHD
-     
-#     # Crear el escritor de video para guardar el video con la resolución reducida
-#     images_resized_path = os.path.join(output_path, "images_resized")
-#     print(images_resized_path)
-#     if not os.path.exists(images_resized_path):
-#         os.makedirs(images_resized_path)
-#     out = cv2.VideoWriter(images_resized_path, fourcc, fps, (width, height))
-    
-#     while True:
-#         # Leer el siguiente fotograma del video
-#         ret, frame = vid.read()
-#         if not ret:
-#             break
+        # Crear directorios de salida
+        os.makedirs(os.path.join(output_path, "imagenes_diferencias"), exist_ok=True)
+        os.makedirs(os.path.join(output_path, "imagenes_fondo_atenuado"), exist_ok=True)
         
-#         # Redimensionar el fotograma al tamaño deseado
-#         frame_resized = cv2.resize(frame, (width, height))
+        # Crear cola de progreso
+        progress_queue = multiprocessing.Queue()
         
-#         # Guardar el fotograma redimensionado
-#         out.write(frame_resized)
+        # Dividir trabajo
+        segment_size = total_imagenes // num_procesos
+        procesos = []
         
-#     # Liberar recursos
-#     vid.release()
-#     out.release()
-#     print(f"Video reducido a FullHD y guardado en: {images_resized_path}")
-#     return images_resized_path
+        for i in range(num_procesos):
+            inicio = i * segment_size
+            fin = (i+1) * segment_size if i < num_procesos - 1 else total_imagenes
+            segmento = imagenes[inicio:fin]
+            
+            p = multiprocessing.Process(
+                target=atenuar_fondo_imagenes_segmento,
+                args=(input_path, output_path, segmento, fondo_final, factor_at, umbral_dif,
+                      apertura_flag, cierre_flag, apertura_kernel_size, cierre_kernel_size,
+                      i, progress_queue)
+            )
+            procesos.append(p)
+            p.start()
+        
+        # Manejar progreso
+        progreso_total = [0] * num_procesos
+        while any(p.is_alive() for p in procesos):
+            while not progress_queue.empty():
+                segment_id, progress = progress_queue.get()
+                progreso_total[segment_id] = progress
+                progreso_promedio = int(sum(progreso_total) / num_procesos)
+                if progress_callback:
+                    progress_callback(progreso_promedio)
+        
+        # Limpiar y esperar
+        while not progress_queue.empty():
+            progress_queue.get()
+            
+        for p in procesos:
+            p.join()
+            
+        end_time = time.time()
+        print(f"Tiempo ejecución atenuación fondo: {end_time - start_time:.2f} segundos")
+        
+        return None
+        
+    except Exception as e:
+        print(f"Error en la atenuación del fondo en el proceso principal: {e}")
+    
+        
