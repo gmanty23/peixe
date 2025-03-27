@@ -10,6 +10,9 @@ pretrained/
 workspace
 workspace/
 processing_GUI/cache_intermedio
+environment.yml
+environment_*
+.gitignore  
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
