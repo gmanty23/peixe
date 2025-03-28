@@ -37,10 +37,12 @@ class GUI(QWidget):
         self.h = controller.h
         self.w = controller.w
         self.T = controller.T
-
+        self.counter_file = f"{self.cfg['workspace']}/mask_counter.txt" #NEW - Para numerar las carpetaas de mascaras guardadas
+        self.mask_counter = self.load_counter()  # Cargar el contador al iniciar
+        
         # set up the window
         self.setWindowTitle(f'Cutie demo: {cfg["workspace"]}')
-        self.setGeometry(100, 100, self.w + 200, self.h + 200)
+        self.setGeometry(100, 100, self.w, self.h)
         self.setWindowIcon(QIcon('docs/icon.png'))
 
         # set up some buttons
@@ -500,19 +502,51 @@ class GUI(QWidget):
 
 
     #NEW - CAMBIAR CON EL VIDEO
+    def load_counter(self):
+        """Carga el valor del contador desde un archivo, si existe."""
+        if os.path.exists(self.counter_file):
+            with open(self.counter_file, "r") as f:
+                return int(f.read().strip())
+        return 0  # Si no existe, iniciar en 0
+
+    def save_counter(self):
+        """Guarda el valor del contador en un archivo."""
+        with open(self.counter_file, "w") as f:
+            f.write(str(self.mask_counter))
+
+
     def on_fuse_masks(self):  
         images_path = f"{self.cfg['workspace']}/images"
         masks_path = f"{self.cfg['workspace']}/masks"
-        if images_path and masks_path:
-            self.fuse_masks(images_path, masks_path)
         
+        if images_path and masks_path:
+            # Crear el nuevo subdirectorio masks_x
+            masks_guardadas_path = f"{self.cfg['workspace']}/masks_guardadas"
+            if not os.path.exists(masks_guardadas_path):
+                os.makedirs(masks_guardadas_path)
+            new_masks_path = f"{self.cfg['workspace']}/masks_guardadas/masks_{self.mask_counter}"
+            os.makedirs(new_masks_path, exist_ok=True)
+            
+            # Copiar archivos de masks_path a new_masks_path
+            for file_name in os.listdir(masks_path):
+                full_file_name = os.path.join(masks_path, file_name)
+                if os.path.isfile(full_file_name):
+                    shutil.copy(full_file_name, new_masks_path)
+            
+            # Incrementar el contador y guardarlo
+            self.mask_counter += 1
+            self.save_counter()
+
+            # Llamar a fuse_masks
+            self.fuse_masks(images_path, masks_path)
+
         self.close()
         command = [
             'python', 'interactive_demo.py',
             '--num_objects', f"{self.cfg['num_objects']}",
             '--workspace', f"{self.cfg['workspace']}"
         ]
-        
+
         # Ejecutar el comando
         subprocess.Popen(command)
             
@@ -560,43 +594,10 @@ def process_img(file, images_path, masks_path, output_path):
         
     cv2.imwrite(os.path.join(output_path, file), img)
     
-    
-    
-    
-    
-    #     #NEW
-    # def fuse_masks(self, images_path, masks_path):
-    #     cache_path = f"{self.cfg['workspace']}/cache"
-    #     os.makedirs(cache_path, exist_ok=True)
-        
-    #     files = sorted(os.listdir(images_path))
-        
-    #     # Copiar los archivos a la carpeta de cache
-    #     for file in files:
-    #         origin_file = os.path.join(images_path, file)
-    #         destination_file = os.path.join(cache_path, file)
-    #         if os.path.isfile(origin_file):
-    #             shutil.copy2(origin_file, destination_file)
-                    
-    #     output_path = images_path
-        
-    #     # Procesar las imágenes de manera secuencial (sin multiprocessing)
-    #     for file in tqdm(files, desc="Processing Images", unit="img"):
-    #         new_color = (255, 0, 255)  # Color as different as it can be from the fish tank  
 
-    #         img = cv2.imread(os.path.join(images_path, file))
-    #         n_mask = os.path.splitext(file)[0]
-    #         mask = cv2.imread(os.path.join(masks_path, n_mask + ".png"), cv2.IMREAD_UNCHANGED)
-                
-    #         if mask is not None and len(mask.shape) == 3:
-    #             mask = cv2.cvtColor(mask, cv2.COLOR_BGR2GRAY)
-                
-    #         if img is None or mask is None:
-    #             print(f"Error in file{file}, skipping...")
-    #             continue
-                
-    #         binary_mask = mask > 0
-    #         img[binary_mask] = new_color    
-                
-    #         cv2.imwrite(os.path.join(output_path, file), img)
-        
+    
+
+    
+    
+    
+    
