@@ -41,6 +41,7 @@ class WorkerThread(QThread):
         
         try:
             # Etapa 1: Extraer imágenes del video 
+            self.progreso_general_signal.emit(0)
             self.etapa_actual_signal.emit("Extrayendo imágenes del video...")
             if self.cancelar_flag:
                 self.etapa_actual_signal.emit("Preprocesado cancelado.")
@@ -171,7 +172,7 @@ class VentanaPreprocesado(QWidget):
         
         atenuar_layout = QGridLayout()
         atenuar_layout.addWidget(QLabel("Tamaño Grupo:"), 0, 0)
-        self.input_sizeGrupo = QLineEdit("30")
+        self.input_sizeGrupo = QLineEdit("60")
         atenuar_layout.addWidget(self.input_sizeGrupo, 0, 1)
         
         atenuar_layout.addWidget(QLabel("Factor Atenuación:"), 1, 0)
@@ -179,7 +180,7 @@ class VentanaPreprocesado(QWidget):
         atenuar_layout.addWidget(self.input_factor_at, 1, 1)
         
         atenuar_layout.addWidget(QLabel("Umbral Diferencia:"), 2, 0)
-        self.input_umbral_dif = QLineEdit("7")
+        self.input_umbral_dif = QLineEdit("3")
         atenuar_layout.addWidget(self.input_umbral_dif, 2, 1)
         
         # Operaciones morfológicas
@@ -193,11 +194,11 @@ class VentanaPreprocesado(QWidget):
         self.checkbox_apertura.setChecked(True)
         morph_layout.addWidget(self.checkbox_apertura, 0, 0)
         
-        self.apertura_kernel_width = QLineEdit("3")
+        self.apertura_kernel_width = QLineEdit("9")
         self.apertura_kernel_width.setPlaceholderText("Ancho kernel")
         morph_layout.addWidget(self.apertura_kernel_width, 0, 1)
         
-        self.apertura_kernel_height = QLineEdit("3")
+        self.apertura_kernel_height = QLineEdit("9")
         self.apertura_kernel_height.setPlaceholderText("Alto kernel")
         morph_layout.addWidget(self.apertura_kernel_height, 0, 2)
         
@@ -408,13 +409,15 @@ class VentanaPreprocesado(QWidget):
                 height = int(self.input_alto.text()) if self.input_alto.text().isdigit() else 1080
                 # Obtener el estado del checkbox de atenuar el fondo y sus parámetros
                 atenuar_fondo_flag = self.checkbox_atenuar_fondo.isChecked()
-                sizeGrupo = int(self.input_sizeGrupo.text()) if self.input_sizeGrupo.text().isdigit() else 30
-                factor_at = float(self.input_factor_at.text()) if self.input_factor_at.text().isdigit() else 0.4
-                umbral_dif = int(self.input_umbral_dif.text()) if self.input_umbral_dif.text().isdigit() else 7
+                sizeGrupo = int(self.input_sizeGrupo.text()) if self.input_sizeGrupo.text().isdigit() else 60
+                print(sizeGrupo)
+                factor_at = float(self.input_factor_at.text()) 
+                umbral_dif = int(self.input_umbral_dif.text()) if self.input_umbral_dif.text().isdigit() else 3
+                print(umbral_dif)
                 apertura_flag = self.checkbox_apertura.isChecked()
                 cierre_flag = self.checkbox_cierre.isChecked()
-                apertura_kernel_width = int(self.apertura_kernel_width.text()) if self.apertura_kernel_width.text().isdigit() else 3
-                apertura_kernel_height = int(self.apertura_kernel_height.text()) if self.apertura_kernel_height.text().isdigit() else 3
+                apertura_kernel_width = int(self.apertura_kernel_width.text()) if self.apertura_kernel_width.text().isdigit() else 9
+                apertura_kernel_height = int(self.apertura_kernel_height.text()) if self.apertura_kernel_height.text().isdigit() else 9
                 apertura_kernel_size = (apertura_kernel_width, apertura_kernel_height)
                 cierre_kernel_width = int(self.cierre_kernel_width.text()) if self.cierre_kernel_width.text().isdigit() else 3
                 cierre_kernel_height = int(self.cierre_kernel_height.text()) if self.cierre_kernel_height.text().isdigit() else 3

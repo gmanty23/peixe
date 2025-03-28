@@ -2,9 +2,12 @@ import subprocess
 from pathlib import Path
 from PySide6.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QWidget, 
                               QLabel, QSpinBox, QPushButton, QFileDialog, 
-                              QHBoxLayout, QLineEdit, QMessageBox, QGroupBox)
+                              QHBoxLayout, QLineEdit, QMessageBox, QGroupBox, QCheckBox)
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
+import os
+import subprocess
+import shutil
 
 class VentanaEtiquetado(QMainWindow):
     def __init__(self, parent=None):
@@ -26,6 +29,15 @@ class VentanaEtiquetado(QMainWindow):
         # Grupo: Parámetros de etiquetado
         params_group = QGroupBox("Configuración de Etiquetado")
         params_layout = QVBoxLayout()
+        
+        # Sección para el reinicio del contador de mascaras guardadas 
+        reset_layout = QHBoxLayout()
+        reset_label = QLabel("Reiniciar contador de máscaras guardadas:")
+        self.reset_checkbox = QCheckBox()
+        reset_layout.addWidget(reset_label)
+        reset_layout.addWidget(self.reset_checkbox)
+        params_layout.addLayout(reset_layout)
+        
         
         # Sección para el número de objetos
         num_layout = QHBoxLayout()
@@ -51,6 +63,7 @@ class VentanaEtiquetado(QMainWindow):
         
         params_group.setLayout(params_layout)
         main_layout.addWidget(params_group)
+        
         
         # Botones de acción
         buttons_layout = QHBoxLayout()
@@ -114,50 +127,116 @@ class VentanaEtiquetado(QMainWindow):
     def execute_command(self):
         num_objects = self.num_spinbox.value()
         workspace = self.dir_lineedit.text()
+        reset_flag = self.reset_checkbox.isChecked()
+        mask_guardadas_path = os.path.join(workspace, "masks_guardadas")
+        if reset_flag:
+            if os.path.exists(mask_guardadas_path):
+                shutil.rmtree(mask_guardadas_path)
+            file_path = os.path.join(workspace, "mask_counter.txt")
+            with open(file_path, "w") as f:
+                f.write(str("0"))
+                
         
         if not workspace:
             QMessageBox.critical(self, "Error", "Debes seleccionar un directorio de trabajo")
             return
         
-        cmd = f'python interactive_demo.py --num_objects {num_objects} --workspace "{workspace}"'
+        cmd = f'python interactive_demo.py --num_objects "{num_objects}" --workspace "{workspace}"'
         
+        # 1. Primero intentamos ejecución directa (sin terminal nuevo)
+        if self._try_direct_execution(cmd):
+            return
+            
+        # 2. Si falla, probamos con terminales gráficos
+        if self._try_graphical_terminals(cmd):
+            return
+            
+        # 3. Último recurso: ejecución con captura de output
+        self._execute_with_output(cmd)
+
+    def _try_direct_execution(self, cmd):
+        """Intenta ejecución directa sin terminal nuevo"""
         try:
-            # Detección automática del terminal
-            terminals = ['gnome-terminal', 'konsole', 'xterm', 'xfce4-terminal']
-            terminal_found = False
+            # Ejecutar en segundo plano sin bloquear
+            subprocess.Popen(
+                cmd,
+                shell=True,
+                executable='/bin/bash',
+                start_new_session=True
+            )
+            return True
+        except Exception:
+            return False
+
+    def _try_graphical_terminals(self, cmd):
+        """Intenta con varios terminales gráficos"""
+        terminals = [
+            ('xterm', ['xterm', '-hold', '-e', cmd]),
+            ('konsole', ['konsole', '-e', 'bash', '-c', f'{cmd}; exec bash']),
+            ('gnome-terminal', ['gnome-terminal', '--', 'bash', '-c', f'{cmd}; exec bash']),
+            ('xfce4-terminal', ['xfce4-terminal', '-x', 'bash', '-c', f'{cmd}; exec bash']),
+            ('lxterminal', ['lxterminal', '-e', 'bash', '-c', f'{cmd}; exec bash'])
+        ]
+        
+        for name, command in terminals:
+            if self._try_execute(command):
+                print(f"Éxito usando terminal: {name}")
+                return True
+        return False
+
+    def _try_execute(self, command):
+        """Intenta ejecutar un comando y devuelve True si tiene éxito"""
+        try:
+            subprocess.Popen(command)
+            return True
+        except (FileNotFoundError, subprocess.SubprocessError):
+            return False
+
+    def _execute_with_output(self, cmd):
+        """Ejecuta el comando directamente y muestra el resultado"""
+        try:
+            result = subprocess.run(
+                cmd,
+                shell=True,
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                executable='/bin/bash'
+            )
             
-            for terminal in terminals:
-                try:
-                    if terminal == 'gnome-terminal':
-                        subprocess.Popen(['gnome-terminal', '--', 'bash', '-c', f'{cmd}; exec bash'])
-                    elif terminal == 'konsole':
-                        subprocess.Popen(['konsole', '-e', 'bash', '-c', f'{cmd}; exec bash'])
-                    else:
-                        subprocess.Popen([terminal, '-e', f'{cmd}; exec bash'])
-                    terminal_found = True
-                    break
-                except FileNotFoundError:
-                    continue
-            
-            if not terminal_found:
-                # Fallback para sistemas sin terminal gráfica
-                QMessageBox.information(
-                    self, 
-                    "Ejecutando en segundo plano", 
-                    f"El etiquetado se está ejecutando en segundo plano.\nComando: {cmd}"
-                )
-                subprocess.Popen(['bash', '-c', cmd])
+            output = f"Comando: {cmd}\n\nSalida:\n{result.stdout}"
+            if result.stderr:
+                output += f"\n\nErrores:\n{result.stderr}"
                 
+            QMessageBox.information(self, "Resultado", output)
+            
+        except subprocess.CalledProcessError as e:
+            error_msg = (
+                f"Error al ejecutar:\n{cmd}\n\n"
+                f"Código: {e.returncode}\n\n"
+                f"Error:\n{e.stderr}\n\n"
+                f"Salida:\n{e.stdout}"
+            )
+            QMessageBox.critical(self, "Error de Ejecución", error_msg)
         except Exception as e:
             QMessageBox.critical(
-                self, 
-                "Error", 
-                f"No se pudo ejecutar el comando:\n{str(e)}\n\n"
-                "Asegúrate de tener instalado un terminal como:\n"
-                "gnome-terminal, konsole, xterm o xfce4-terminal"
+                self,
+                "Error Grave",
+                f"No se pudo ejecutar el comando:\n{cmd}\n\n"
+                f"Error: {str(e)}\n\n"
+                "Solución recomendada:\n"
+                "1. Ejecuta manualmente en una terminal:\n"
+                f"{cmd}\n\n"
+                "2. O instala un terminal gráfico como xterm:\n"
+                "sudo apt install xterm"
             )
     
     def volver_a_inicio(self):
         self.close()
         if self.parent_window:
             self.parent_window.show()
+            
+            
+            
+    
