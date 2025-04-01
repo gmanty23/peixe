@@ -327,6 +327,9 @@ def calcular_mediana(input_path,sizeGrupo,total_imagenes,imagenes, progress_call
             # Actualizar progreso al 100%
             if progress_callback_especifico:
                 progress_callback_especifico(100)
+            # Eliminar las medianas intermedias en el cache
+            for f in os.listdir(cache_path):
+                os.remove(os.path.join(cache_path, f))
 
             return fondo_final
         else:
@@ -414,7 +417,9 @@ def atenuar_fondo_imagenes(input_path, output_path, sizeGrupo, factor_at, umbral
         if progress_callback_etapa:
             progress_callback_etapa("Calculando fondo...")
         fondo_final = calcular_mediana(input_path, sizeGrupo, total_imagenes, imagenes, progress_callback_especifico, num_procesos)
-        
+        #Guardar la imagen de la mediana final
+        fondo_final_path = "processing_GUI/procesamiento/cache/fondo_final.jpg"
+        cv2.imwrite(fondo_final_path, fondo_final)
         # Crear directorios de salida si no existen
         os.makedirs(os.path.join(output_path, "imagenes_diferencias"), exist_ok=True)
         os.makedirs(os.path.join(output_path, "imagenes_fondo_atenuado"), exist_ok=True)
