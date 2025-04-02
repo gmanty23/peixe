@@ -360,9 +360,6 @@ def atenuar_fondo_imagenes_segmento(input_path, output_path, imagenes, fondo_fin
                 # Aplicar umbralización para obtener una máscara binaria
                 _, diferencia_umbral = cv2.threshold(diferencia_gris, umbral_dif, 255, cv2.THRESH_BINARY)
                 
-                # Guardar diferencia
-                cv2.imwrite(os.path.join(output_path_imagenes_diferencias, f'diferencia_{img_name.split("_")[1]}'), diferencia_umbral)
-                
                 # Operaciones morfológicas, si se han seleccionado
                 if apertura_flag:
                     apertura_kernel = np.ones(apertura_kernel_size, np.uint8)
@@ -370,6 +367,9 @@ def atenuar_fondo_imagenes_segmento(input_path, output_path, imagenes, fondo_fin
                 if cierre_flag:
                     cierre_kernel = np.ones(cierre_kernel_size, np.uint8)
                     diferencia_umbral = cv2.morphologyEx(diferencia_umbral, cv2.MORPH_CLOSE, cierre_kernel)
+                
+                # Guardar diferencia
+                cv2.imwrite(os.path.join(output_path_imagenes_diferencias, f'diferencia_{img_name.split("_")[1]}'), diferencia_umbral)
                 
                 # Atenuar fondo
                 # Crear una máscara invertida para atenuar el fondo (donde no hay peces)
