@@ -11,6 +11,7 @@ workspace
 workspace/
 processing_GUI/procesamiento/cache
 
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

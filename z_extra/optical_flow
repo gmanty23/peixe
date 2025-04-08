@@ -1,0 +1,248 @@
+# import os
+# import glob
+# import cv2
+# import numpy as np
+# from sklearn.cluster import DBSCAN
+# from scipy.optimize import linear_sum_assignment
+# import matplotlib.pyplot as plt
+# from collections import defaultdict
+
+# # === CONFIGURACIÓN DEL USUARIO ===
+# MASK_FOLDER = "/home/gms/AnemoNAS/Workspace/or_masks_50/"       
+# IMG_FOLDER = "/home/gms/AnemoNAS/Workspace/imagenes_og_re_50/"      
+# OUTPUT_FOLDER = "outputs_tracking"
+
+# os.makedirs(OUTPUT_FOLDER, exist_ok=True)
+
+# # Obtener rutas ordenadas
+# mask_paths = sorted(glob.glob(os.path.join(MASK_FOLDER, "*.png")))
+# img_paths = sorted(glob.glob(os.path.join(IMG_FOLDER, "*.jpg")))
+
+# assert len(mask_paths) == len(img_paths), "Número de máscaras y frames no coincide."
+
+# # Parámetros Optical Flow
+# flow_params = dict(pyr_scale=0.5, levels=3, winsize=15,
+#                    iterations=3, poly_n=5, poly_sigma=1.2, flags=0)
+
+# # Tracking
+# next_id = 0
+# prev_centroids = []
+# prev_ids = []
+# track_colors = {}
+# track_history = defaultdict(list)
+
+# for i in range(len(mask_paths) - 1):
+#     print(f"[INFO] Procesando par {i} y {i+1}")
+
+#     # Cargar máscaras
+#     mask1 = cv2.imread(mask_paths[i], cv2.IMREAD_GRAYSCALE)
+#     mask2 = cv2.imread(mask_paths[i+1], cv2.IMREAD_GRAYSCALE)
+#     mask1 = (mask1 > 0).astype(np.uint8)
+#     mask2 = (mask2 > 0).astype(np.uint8)
+
+#     # Optical Flow sobre float32
+#     flow = cv2.calcOpticalFlowFarneback(mask1.astype(np.float32), mask2.astype(np.float32), None, **flow_params)
+
+#     # Coordenadas y vectores
+#     yx = np.column_stack(np.where(mask1 > 0))
+#     vectors = flow[mask1 > 0]
+#     features = np.hstack([yx, vectors])  # (y, x, dx, dy)
+
+#     # Clustering de movimiento
+#     clustering = DBSCAN(eps=3, min_samples=10).fit(features)
+#     labels = clustering.labels_
+#     num_fish = len(set(labels)) - (1 if -1 in labels else 0)
+#     print(f"    → Detectados {num_fish} peces")
+
+#     # Imagen etiquetada
+#     labeled_image = np.zeros_like(mask1, dtype=np.uint8)
+#     img_orig = cv2.imread(img_paths[i])
+#     centroids = []
+#     masks = []
+
+#     for fish_label in range(num_fish):
+#         value = 50 + 20 * fish_label
+#         mask_fish = (labels != -1) & (labels == fish_label)
+#         coords = yx[mask_fish]
+#         if len(coords) == 0:
+#             continue
+#         y_coords, x_coords = coords[:, 0], coords[:, 1]
+#         labeled_image[y_coords, x_coords] = value
+
+#         # Calcular centroide
+#         M = cv2.moments((labeled_image == value).astype(np.uint8))
+#         if M["m00"] > 0:
+#             cX = int(M["m10"] / M["m00"])
+#             cY = int(M["m01"] / M["m00"])
+#         else:
+#             cX, cY = 0, 0
+#         centroids.append((cX, cY))
+#         masks.append((labeled_image == value).astype(np.uint8))
+
+#     # Asignación de IDs por matching de centroides
+#     ids = [-1] * len(centroids)
+#     if prev_centroids:
+#         cost_matrix = np.zeros((len(prev_centroids), len(centroids)))
+#         for a, (x1, y1) in enumerate(prev_centroids):
+#             for b, (x2, y2) in enumerate(centroids):
+#                 cost_matrix[a, b] = np.linalg.norm([x1 - x2, y1 - y2])
+
+#         row_ind, col_ind = linear_sum_assignment(cost_matrix)
+
+#         assigned_new = set()
+#         for r, c in zip(row_ind, col_ind):
+#             if cost_matrix[r, c] < 50:  # umbral de distancia
+#                 ids[c] = prev_ids[r]
+#                 assigned_new.add(c)
+
+#         # Nuevos IDs para no emparejados
+#         for idx in range(len(centroids)):
+#             if ids[idx] == -1:
+#                 ids[idx] = next_id
+#                 next_id += 1
+#     else:
+#         ids = list(range(next_id, next_id + len(centroids)))
+#         next_id += len(centroids)
+
+#     # Guardar por ID
+#     for id_val, mask in zip(ids, masks):
+#         fish_img = cv2.bitwise_and(img_orig, img_orig, mask=mask)
+#         out_name = f"frame_{i:04d}_id_{id_val}.png"
+#         cv2.imwrite(os.path.join(OUTPUT_FOLDER, out_name), fish_img)
+#         track_history[id_val].append((i, mask))
+
+#     # Visualización con colores por ID
+#     vis_img = img_orig.copy()
+#     for id_val, (cx, cy) in zip(ids, centroids):
+#         if id_val not in track_colors:
+#             color = tuple(np.random.randint(0, 255, size=3).tolist())
+#             track_colors[id_val] = color
+#         cv2.circle(vis_img, (cx, cy), 5, track_colors[id_val], -1)
+#         cv2.putText(vis_img, f"ID {id_val}", (cx + 5, cy), cv2.FONT_HERSHEY_SIMPLEX, 0.4, track_colors[id_val], 1)
+
+#     cv2.imwrite(os.path.join(OUTPUT_FOLDER, f"tracked_{i:04d}.png"), vis_img)
+
+#     # Actualizar para próximo frame
+#     prev_centroids = centroids
+#     prev_ids = ids
+
+
+
+import os
+import glob
+import cv2
+import numpy as np
+from sklearn.cluster import DBSCAN
+from scipy.optimize import linear_sum_assignment
+from collections import defaultdict
+
+# === CONFIGURACIÓN ===
+MASK_FOLDER = "/home/gms/AnemoNAS/Workspace/or_masks_50/"       
+IMG_FOLDER = "/home/gms/AnemoNAS/Workspace/imagenes_og_re_50/"      
+OUTPUT_FOLDER = "outputs_tracking"
+
+os.makedirs(OUTPUT_FOLDER, exist_ok=True)
+
+# Rutas ordenadas
+mask_paths = sorted(glob.glob(os.path.join(MASK_FOLDER, "*.png")))
+img_paths = sorted(glob.glob(os.path.join(IMG_FOLDER, "*.jpg")))
+
+assert len(mask_paths) == len(img_paths), "Número de máscaras y frames no coincide."
+
+# Optical Flow
+flow_params = dict(pyr_scale=0.5, levels=3, winsize=15,
+                   iterations=3, poly_n=5, poly_sigma=1.2, flags=0)
+
+# Colores fijos para los 50 peces
+np.random.seed(42)
+track_colors = {
+    i: tuple(np.random.randint(50, 256, size=3).tolist())
+    for i in range(50)
+}
+
+# Tracking
+next_id = 0
+prev_centroids = []
+prev_ids = []
+track_history = defaultdict(list)
+
+for i in range(len(mask_paths) - 1):
+    print(f"[INFO] Procesando par {i} y {i+1}")
+
+    mask1 = cv2.imread(mask_paths[i], cv2.IMREAD_GRAYSCALE)
+    mask2 = cv2.imread(mask_paths[i+1], cv2.IMREAD_GRAYSCALE)
+    mask1 = (mask1 > 0).astype(np.uint8)
+    mask2 = (mask2 > 0).astype(np.uint8)
+    img_orig = cv2.imread(img_paths[i])
+
+    flow = cv2.calcOpticalFlowFarneback(mask1.astype(np.float32), mask2.astype(np.float32), None, **flow_params)
+    yx = np.column_stack(np.where(mask1 > 0))
+    vectors = flow[mask1 > 0]
+    features = np.hstack([yx, vectors])
+
+    clustering = DBSCAN(eps=3, min_samples=10).fit(features)
+    labels = clustering.labels_
+    num_fish = len(set(labels)) - (1 if -1 in labels else 0)
+    print(f"    → Detectados {num_fish} blobs de movimiento")
+
+    labeled_image = np.zeros_like(mask1, dtype=np.uint8)
+    centroids = []
+    masks = []
+
+    for fish_label in range(num_fish):
+        label_mask = (labels != -1) & (labels == fish_label)
+        coords = yx[label_mask]
+        if len(coords) == 0:
+            continue
+        y_coords, x_coords = coords[:, 0], coords[:, 1]
+        label_value = fish_label + 1  # Seguro en uint8
+        labeled_image[y_coords, x_coords] = label_value
+
+        M = cv2.moments((labeled_image == label_value).astype(np.uint8))
+        if M["m00"] > 0:
+            cX = int(M["m10"] / M["m00"])
+            cY = int(M["m01"] / M["m00"])
+        else:
+            cX, cY = 0, 0
+        centroids.append((cX, cY))
+        masks.append((labeled_image == label_value).astype(np.uint8))
+
+    ids = [-1] * len(centroids)
+    if prev_centroids:
+        cost_matrix = np.zeros((len(prev_centroids), len(centroids)))
+        for a, (x1, y1) in enumerate(prev_centroids):
+            for b, (x2, y2) in enumerate(centroids):
+                cost_matrix[a, b] = np.linalg.norm([x1 - x2, y1 - y2])
+
+        row_ind, col_ind = linear_sum_assignment(cost_matrix)
+
+        assigned = set()
+        for r, c in zip(row_ind, col_ind):
+            if cost_matrix[r, c] < 50:
+                ids[c] = prev_ids[r]
+                assigned.add(c)
+
+        for idx in range(len(centroids)):
+            if ids[idx] == -1:
+                ids[idx] = next_id
+                next_id = (next_id + 1) % 50  # Rota entre 0 y 49
+    else:
+        ids = list(range(num_fish))
+        next_id = num_fish
+
+    # Guardar peces individuales y visualizar
+    vis_img = img_orig.copy()
+    for id_val, mask, (cx, cy) in zip(ids, masks, centroids):
+        fish_img = cv2.bitwise_and(img_orig, img_orig, mask=mask)
+        out_name = f"frame_{i:04d}_id_{id_val}.png"
+        cv2.imwrite(os.path.join(OUTPUT_FOLDER, out_name), fish_img)
+        track_history[id_val].append((i, mask))
+
+        # Dibujar ID
+        color = track_colors[id_val]
+        cv2.circle(vis_img, (cx, cy), 5, color, -1)
+        cv2.putText(vis_img, f"ID {id_val}", (cx + 5, cy), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+
+    cv2.imwrite(os.path.join(OUTPUT_FOLDER, f"tracked_{i:04d}.png"), vis_img)
+    prev_centroids = centroids
+    prev_ids = ids
