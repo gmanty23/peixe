@@ -4,16 +4,18 @@ import numpy as np
 from pathlib import Path
 from tqdm import tqdm
 
+root_dir = "/home/gmanty/code/USCL2-194221-194721/Workspace_bloque_1"
 # Ruta al directorio raíz donde están los subdirectorios con las máscaras
-root_dir = "/home/gms/AnemoNAS/Workspace/masks_guardadas_2/"
+mask_dir = os.path.join(root_dir, "masks_guardadas")
 # Ruta al directorio donde se guardarán las máscaras resultantes (una por subdirectorio)
-out_dir = "/home/gms/AnemoNAS/Workspace/or_masks/"
-
-
+out_dir = os.path.join(root_dir, "or_masks")
+# Crear el directorio de salida si no existe
 os.makedirs(out_dir, exist_ok=True)
 
+
+
 # Obtener todos los subdirectorios
-subdirs = [os.path.join(root_dir, d) for d in os.listdir(root_dir) if os.path.isdir(os.path.join(root_dir, d))]
+subdirs = [os.path.join(mask_dir, d) for d in os.listdir(mask_dir) if os.path.isdir(os.path.join(mask_dir, d))]
 
 # Obtener lista de archivos desde el primer subdirectorio (asumiendo que todos tienen los mismos nombres y orden)
 frame_names = sorted([f for f in os.listdir(subdirs[0]) if f.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.tif', '.tiff'))])

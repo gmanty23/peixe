@@ -3,7 +3,7 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QPushButton, QFileD
                               QGroupBox, QSizePolicy)
 from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtCore import Qt, QThread, Signal, QSettings
-from processing_GUI.procesamiento.preprocesado import  extraer_imagenes, redimensionar_imagenes, atenuar_fondo_imagenes
+from processing_GUI.procesamiento.preprocesado import  extraer_imagenes, redimensionar_imagenes, atenuar_fondo_imagenes, dividir_bloques
 import debugpy
 import os
 import shutil   
@@ -18,10 +18,11 @@ class WorkerThread(QThread):
     progreso_general_signal = Signal(int) # Progreso general (0-100)
     progreso_especifico_signal = Signal(int) # Progreso de la etapa actual (0-100)
 
-    def __init__(self, video_path, output_path,redimensionar_flag, width, height, atenuar_fondo_flag, sizeGrupo, factor_at, umbral_dif, apertura_flag, cierre_flag, apertura_kernel_size, cierre_kernel_size):
+    def __init__(self, video_path, output_path, adaptar_moment_flag, redimensionar_flag, width, height, atenuar_fondo_flag, sizeGrupo, factor_at, umbral_dif, apertura_flag, cierre_flag, dilatacion_flag, apertura_kernel_size, cierre_kernel_size, dilatacion_kernel_size, guardar_intermedias_flag):
         super().__init__()
         self.video_path = video_path
         self.output_path = output_path
+        self.adaptar_moment_flag = adaptar_moment_flag
         self.width = width
         self.height = height
         self.cancelar_flag = False
@@ -32,14 +33,21 @@ class WorkerThread(QThread):
         self.umbral_dif = umbral_dif
         self.apertura_flag = apertura_flag
         self.cierre_flag = cierre_flag
+        self.dilatacion_flag = dilatacion_flag
         self.apertura_kernel_size = apertura_kernel_size
         self.cierre_kernel_size = cierre_kernel_size
+        self.dilatacion_kernel_size = dilatacion_kernel_size
+        self.guardar_intermedias_flag = guardar_intermedias_flag
 
 
     def run(self):
         print("Iniciando preprocesado...")
         
         try:
+
+            final_path = os.path.join(self.output_path, os.path.basename(self.video_path).split(".")[0])
+            print(final_path)
+            os.makedirs(final_path, exist_ok=True)  # Crear el directorio de salida si no existe
             # Etapa 1: Extraer imágenes del video 
             self.progreso_general_signal.emit(0)
             self.etapa_actual_signal.emit("Extrayendo imágenes del video...")
@@ -49,11 +57,12 @@ class WorkerThread(QThread):
             if self.video_path is None:
                     self.etapa_actual_signal.emit("Error al extraer las imágenes.")
                     return
-            images_path = extraer_imagenes(self.video_path, self.output_path, progress_callback=lambda p: self.progreso_especifico_signal.emit(p))
+            images_path = extraer_imagenes(self.video_path, final_path, progress_callback=lambda p: self.progreso_especifico_signal.emit(p))
+            og_path = images_path
             if images_path is None:
                     self.etapa_actual_signal.emit("Error al extraer las imágenes.")
                     return
-            self.progreso_general_signal.emit(33)
+            self.progreso_general_signal.emit(20)
             
             # Paso 2: Redimensionar (si está habilitado)
             if self.redimensionar_flag:
@@ -64,8 +73,9 @@ class WorkerThread(QThread):
                     self.etapa_actual_signal.emit("Error en el directorio de las imágenes.")
                     return
                 self.etapa_actual_signal.emit("Reduciendo la resolución de las imágenes...")
-                images_path = redimensionar_imagenes(images_path, self.output_path,self.width, self.height, progress_callback=lambda p: self.progreso_especifico_signal.emit(p))  
-            self.progreso_general_signal.emit(66)
+                images_path = redimensionar_imagenes(images_path, final_path,self.width, self.height, progress_callback=lambda p: self.progreso_especifico_signal.emit(p))  
+                resized_path = images_path
+            self.progreso_general_signal.emit(40)
 
             # Paso 3: Atenuación de fondo
             if self.atenuar_fondo_flag: 
@@ -75,19 +85,55 @@ class WorkerThread(QThread):
                 if images_path is None:
                     self.etapa_actual_signal.emit("Error en el directoro de las imágenes")
                 self.etapa_actual_signal.emit("Iniciando la atenuación del fondo...")
-                images_path = atenuar_fondo_imagenes(images_path, self.output_path, self.sizeGrupo, self.factor_at, self.umbral_dif, self.apertura_flag, self.cierre_flag, self.apertura_kernel_size, self.cierre_kernel_size, progress_callback_especifico=lambda p: self.progreso_especifico_signal.emit(p), progress_callback_etapa=lambda p: self.etapa_actual_signal.emit(p))
-            
+                images_path = atenuar_fondo_imagenes(images_path, final_path, self.sizeGrupo, self.factor_at, self.umbral_dif, self.apertura_flag, self.cierre_flag, self.dilatacion_flag, self.apertura_kernel_size, self.cierre_kernel_size, self.dilatacion_kernel_size, progress_callback_especifico=lambda p: self.progreso_especifico_signal.emit(p), progress_callback_etapa=lambda p: self.etapa_actual_signal.emit(p))
+            self.progreso_general_signal.emit(60)
 
-            # Paso 4: Establecer el directorio del ultimpo procesamiento realizado como el directorio final
-            images_final_path = os.path.join(self.output_path, "images")
-            if os.path.exists(images_final_path):
-                shutil.rmtree(images_final_path)
-            os.rename(images_path, images_final_path) #Crea el directorio de salida si este no existe
+            # Paso 4: Crear el workspace con la estructura pedida por cutie para el etiquetado
+            #Cancelar si se ha cancelado el proceso
+            if self.cancelar_flag:
+                self.etapa_actual_signal.emit("Preprocesado cancelado.")
+                return
+            self.etapa_actual_signal.emit("Creando el Workspace final...")
+            # Creamos los directorios en funcion de si se ha adaptado a Moment o no
+            debugpy.breakpoint()
+            if self.adaptar_moment_flag:
+                self.etapa_actual_signal.emit("Creando el Workspace final - Imágenes finales...")
+                dividir_bloques(images_path, final_path, img_type="images", progress_callback=lambda p: self.progreso_especifico_signal.emit(p))
+                if self.redimensionar_flag:
+                    self.etapa_actual_signal.emit("Creando el Workspace final - Imágenes Originales...")
+                    dividir_bloques(resized_path, final_path, img_type="imagenes_og", progress_callback=lambda p: self.progreso_especifico_signal.emit(p))
+                else:
+                    self.etapa_actual_signal.emit("Creando el Workspace final - Imágenes Originales...")
+                    dividir_bloques(og_path, final_path, img_type="imagenes_og", progress_callback=lambda p: self.progreso_especifico_signal.emit(p))
+            else:
+                images_final_path = os.path.join(final_path, "Workspace/images")
+                os.makedirs(images_final_path, exist_ok=True)  # Crear el directorio de salida si no existe
+                if os.path.exists(images_final_path):
+                    shutil.rmtree(images_final_path)
+                os.rename(images_path, images_final_path) #Crea el directorio de salida si este no existe
+            self.progreso_general_signal.emit(80)
+
+            # Paso 5: Eliminamos los directorios intermedios si la opcion esta marcada
+            if not self.guardar_intermedias_flag:
+                # Eliminamos las imagenes originales
+                if (self.adaptar_moment_flag) or (self.redimensionar_flag and not self.adaptar_moment_flag):
+                    images_og_path = os.path.join(final_path, "imagenes_og")
+                    if os.path.exists(images_og_path):
+                        shutil.rmtree(images_og_path)
+                # Eliminamos las imagenes redimensionadas
+                if (self.adaptar_moment_flag) or (not self.redimensionar_flag and not self.adaptar_moment_flag):
+                    images_redim_path = os.path.join(final_path, "imagenes_resized")
+                    if os.path.exists(images_redim_path):
+                        shutil.rmtree(images_redim_path)
+                # Eliminamos las imagenes atenuadas
+                images_at_path = os.path.join(final_path, "imagenes_fondo_atenuado")
+                if os.path.exists(images_at_path):
+                    shutil.rmtree(images_at_path)
+                # Eliminamos imagenes diferencia
+                images_dif_path = os.path.join(final_path, "imagenes_diferencias")
+                if os.path.exists(images_dif_path):
+                    shutil.rmtree(images_dif_path)
             self.progreso_general_signal.emit(100)
-
-
-
-            
 
 
             self.etapa_actual_signal.emit(f"Proceso finalizado.")
@@ -113,7 +159,7 @@ class VentanaPreprocesado(QWidget):
     def setup_ui(self):
         # Título de la ventana y tamaño
         self.setWindowTitle("Preprocesado de Video")
-        self.setMinimumSize(800, 800)
+        self.setMinimumSize(875, 875)
         
         # Layout principal
         main_layout = QVBoxLayout()
@@ -147,6 +193,20 @@ class VentanaPreprocesado(QWidget):
         # Sección: Opciones de Procesamiento
         options_group = QGroupBox("Opciones de Preprocesado")
         options_layout = QVBoxLayout()
+
+        # Guardar imágenes intermedias
+        # -Checkbox para habilitar o deshabilitar el guardado de imágenes intermedias
+        self.checkbox_guardar_intermedias = QCheckBox("Guardar imágenes intermedias")
+        self.checkbox_guardar_intermedias.setChecked(False)
+        self.checkbox_guardar_intermedias.setToolTip("Guardar imágenes intermedias para depuración")
+        options_layout.addWidget(self.checkbox_guardar_intermedias)
+
+        # Dividir por bloques
+        # -Checkbox para habilitar o deshabilitar la división por bloques de 512 frames, tamaño de entrada de Moment
+        self.checkbox_bloques_moment = QCheckBox("Adaptar a Moment (512 frames por bloque)")
+        self.checkbox_bloques_moment.setChecked(True)
+        options_layout.addWidget(self.checkbox_bloques_moment)
+
         
         # Redimensionar
         # -Checkbox para habilitar o deshabilitar la redimensión de las imágenes
@@ -176,7 +236,7 @@ class VentanaPreprocesado(QWidget):
         atenuar_layout.addWidget(self.input_sizeGrupo, 0, 1)
         
         atenuar_layout.addWidget(QLabel("Factor Atenuación:"), 1, 0)
-        self.input_factor_at = QLineEdit("0.4")
+        self.input_factor_at = QLineEdit("0.75")
         atenuar_layout.addWidget(self.input_factor_at, 1, 1)
         
         atenuar_layout.addWidget(QLabel("Umbral Diferencia:"), 2, 0)
@@ -184,12 +244,13 @@ class VentanaPreprocesado(QWidget):
         atenuar_layout.addWidget(self.input_umbral_dif, 2, 1)
         
         # Operaciones morfológicas
-        # -Checkboxes para habilitar o deshabilitar la apertura y el cierre
-        # -Inputs para el tamaño del kernel de la apertura y el cierre
+        # -Checkboxes para habilitarlas e inputs para la personalización de los kernels
+
         morph_group = QGroupBox("Operaciones Morfológicas")
         morph_group.setStyleSheet("QGroupBox { font-weight: normal; }")
         morph_layout = QGridLayout()
         
+        # Apertura
         self.checkbox_apertura = QCheckBox("Aplicar Apertura")
         self.checkbox_apertura.setChecked(True)
         morph_layout.addWidget(self.checkbox_apertura, 0, 0)
@@ -202,17 +263,32 @@ class VentanaPreprocesado(QWidget):
         self.apertura_kernel_height.setPlaceholderText("Alto kernel")
         morph_layout.addWidget(self.apertura_kernel_height, 0, 2)
         
+        # Dilatación 
+        self.checkbox_dilatacion = QCheckBox("Aplicar Dilatación")
+        morph_layout.addWidget(self.checkbox_dilatacion, 1, 0)
+
+        self.dilatacion_kernel_width = QLineEdit("3")
+        self.dilatacion_kernel_width.setPlaceholderText("Ancho kernel")
+        morph_layout.addWidget(self.dilatacion_kernel_width, 1, 1)
+
+        self.dilatacion_kernel_height = QLineEdit("3")
+        self.dilatacion_kernel_height.setPlaceholderText("Alto kernel")
+        morph_layout.addWidget(self.dilatacion_kernel_height, 1, 2)
+
+        # Cierre
         self.checkbox_cierre = QCheckBox("Aplicar Cierre")
-        morph_layout.addWidget(self.checkbox_cierre, 1, 0)
+        morph_layout.addWidget(self.checkbox_cierre, 2, 0)
         
         self.cierre_kernel_width = QLineEdit("3")
         self.cierre_kernel_width.setPlaceholderText("Ancho kernel")
-        morph_layout.addWidget(self.cierre_kernel_width, 1, 1)
+        morph_layout.addWidget(self.cierre_kernel_width, 2, 1)
         
         self.cierre_kernel_height = QLineEdit("3")
         self.cierre_kernel_height.setPlaceholderText("Alto kernel")
-        morph_layout.addWidget(self.cierre_kernel_height, 1, 2)
-        
+        morph_layout.addWidget(self.cierre_kernel_height, 2, 2)
+
+
+        # Agrupamos los checkboxes y inputs de morfología
         morph_group.setLayout(morph_layout)
         
         options_layout.addWidget(self.checkbox_resolucion)
@@ -353,10 +429,14 @@ class VentanaPreprocesado(QWidget):
         self.input_umbral_dif.setEnabled(enabled)
         self.checkbox_apertura.setEnabled(enabled)
         self.checkbox_cierre.setEnabled(enabled)
+        self.checkbox_dilatacion.setEnabled(enabled)
         self.apertura_kernel_width.setEnabled(enabled)
         self.apertura_kernel_height.setEnabled(enabled)
         self.cierre_kernel_width.setEnabled(enabled)
         self.cierre_kernel_height.setEnabled(enabled)
+        self.dilatacion_kernel_width.setEnabled(enabled)
+        self.dilatacion_kernel_height.setEnabled(enabled)
+
         
     
     # Funcion para seleccionar el archivo de video
@@ -404,6 +484,8 @@ class VentanaPreprocesado(QWidget):
 
             if video_path and output_path:
                 # Obtener el estado del checkbox de redimensionar
+                adaptar_moment_flag = self.checkbox_bloques_moment.isChecked()
+                guardar_intermedias_flag = self.checkbox_guardar_intermedias.isChecked()
                 redimensionar_flag = self.checkbox_resolucion.isChecked()
                 width = int(self.input_ancho.text()) if self.input_ancho.text().isdigit() else 1920
                 height = int(self.input_alto.text()) if self.input_alto.text().isdigit() else 1080
@@ -416,20 +498,25 @@ class VentanaPreprocesado(QWidget):
                 print(umbral_dif)
                 apertura_flag = self.checkbox_apertura.isChecked()
                 cierre_flag = self.checkbox_cierre.isChecked()
+                dilatacion_flag = self.checkbox_dilatacion.isChecked()
                 apertura_kernel_width = int(self.apertura_kernel_width.text()) if self.apertura_kernel_width.text().isdigit() else 9
                 apertura_kernel_height = int(self.apertura_kernel_height.text()) if self.apertura_kernel_height.text().isdigit() else 9
                 apertura_kernel_size = (apertura_kernel_width, apertura_kernel_height)
                 cierre_kernel_width = int(self.cierre_kernel_width.text()) if self.cierre_kernel_width.text().isdigit() else 3
                 cierre_kernel_height = int(self.cierre_kernel_height.text()) if self.cierre_kernel_height.text().isdigit() else 3
                 cierre_kernel_size = (cierre_kernel_width, cierre_kernel_height)
+                dilatacion_kernel_width = int(self.dilatacion_kernel_width.text()) if self.dilatacion_kernel_width.text().isdigit() else 3
+                dilatacion_kernel_height = int(self.dilatacion_kernel_height.text()) if self.dilatacion_kernel_height.text().isdigit() else 3
+                dilatacion_kernel_size = (dilatacion_kernel_width, dilatacion_kernel_height)
                 #Crear y ejecutar el hilo de trabajo
-                self.worker_thread = WorkerThread(video_path, output_path, redimensionar_flag, width, height, atenuar_fondo_flag, sizeGrupo, factor_at, umbral_dif, apertura_flag, cierre_flag, apertura_kernel_size, cierre_kernel_size)
+                self.worker_thread = WorkerThread(video_path, output_path,adaptar_moment_flag, redimensionar_flag, width, height, atenuar_fondo_flag, sizeGrupo, factor_at, umbral_dif, apertura_flag, cierre_flag, dilatacion_flag, apertura_kernel_size, cierre_kernel_size, dilatacion_kernel_size, guardar_intermedias_flag)
                  # Conectar las señales del hilo de trabajo con las funciones de actualización de la interfaz
                 self.worker_thread.etapa_actual_signal.connect(self.actualizar_etapa)
                 self.worker_thread.progreso_general_signal.connect(self.barra_progreso_etapas.setValue)
                 self.worker_thread.progreso_especifico_signal.connect(self.barra_progreso_especifica.setValue)
                 # Conectar una señal para recibir la imagen procesada y mostrarla
-                self.worker_thread.finished.connect(lambda: self.mostrar_resultado(output_path))
+                final_path = os.path.join(output_path, os.path.basename(video_path).split(".")[0])
+                self.worker_thread.finished.connect(lambda: self.mostrar_resultado(final_path, adaptar_moment_flag))
                 
                 self.worker_thread.start()
                 
@@ -439,14 +526,21 @@ class VentanaPreprocesado(QWidget):
             
             
     # Función para mostrar el resultado del preprocesado
-    def mostrar_resultado(self, output_path):
+    def mostrar_resultado(self, output_path, adaptar_moment_flag):
         self.boton_iniciar_preprocesado.setText("Iniciar Preprocesado")
         # Obtener rutas de los primeros frames
-        carpeta_original = os.path.join(output_path, "imagenes_og")
-        carpeta_procesada = os.path.join(output_path, "images")
+        if adaptar_moment_flag:
+            carpeta_original = os.path.join(output_path, "Workspace_bloque_1/imagenes_og")
+            carpeta_procesada = os.path.join(output_path, "Workspace_bloque_1/images")
+        else:
+            carpeta_original = os.path.join(output_path, "imagenes_og")
+            carpeta_procesada = os.path.join(output_path, "Workspace/images")
         frame_original = self.obtener_primer_frame(carpeta_original)
         frame_procesado = self.obtener_primer_frame(carpeta_procesada)
-            
+        print (frame_original)
+        print (frame_procesado)
+        
+        debugpy.breakpoint()
         if frame_original and frame_procesado:
             if not hasattr(self, 'ventana_comparacion'):
                 self.ventana_comparacion = VentanaResultados()

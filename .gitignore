@@ -10,7 +10,9 @@ pretrained/
 workspace
 workspace/
 processing_GUI/procesamiento/cache
-
+tracking/classification/dataset_blobs
+tracking/classification/model
+tracking/classification/training_metrics
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

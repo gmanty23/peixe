@@ -566,7 +566,7 @@ class GUI(QWidget):
         output_path = images_path
             
         # Multiprocessing with `Pool`
-        num_threads = cpu_count()  
+        num_threads = cpu_count() - 1
         print(f"Processing with {num_threads} threads...")
         with Pool(num_threads) as p:
             # Prepara los argumentos a pasar a process_img

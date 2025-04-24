@@ -9,10 +9,17 @@ import matplotlib.pyplot as plt
 
 
 # === Configuración del usuario ===
-MASK_FOLDER = "/home/gms/AnemoNAS/Workspace/or_masks_50/"       
-IMG_FOLDER = "/home/gms/AnemoNAS/Workspace/imagenes_og_re_50/"      
-OUTPUT_FOLDER = "/home/gms/AnemoNAS/Workspace/outputs_tracking"
+ROOT_FOLDER = "/home/gmanty/code/Workspace_prueba"
+MASK_FOLDER = os.path.join(ROOT_FOLDER, "or_masks_50")
+IMG_FOLDER = os.path.join(ROOT_FOLDER, "imagenes_og_re_50")
+OUTPUT_FOLDER = os.path.join(ROOT_FOLDER, "outputs_tracking")
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
+EXPORT_BLOBS = True
+BLOBS_EXPORT_FOLDER = os.path.join(OUTPUT_FOLDER, "blobs_sin_clasificar")
+os.makedirs(BLOBS_EXPORT_FOLDER, exist_ok=True)
+for f in os.listdir(BLOBS_EXPORT_FOLDER):
+    os.remove(os.path.join(BLOBS_EXPORT_FOLDER, f))
+
 
 mask_paths = sorted(glob.glob(os.path.join(MASK_FOLDER, "*.png"))) 
 img_paths = sorted(glob.glob(os.path.join(IMG_FOLDER, "*.jpg")))
@@ -129,7 +136,18 @@ def resumen_por_tipo(tracking_graph):
     plt.legend()
     plt.tight_layout()
     plt.show()
-    
+
+def exportar_blob_recortado(frame, mask, frame_idx, blob_idx, export_folder, padding=5):
+    os.makedirs(export_folder, exist_ok=True)
+
+    if np.sum(mask) == 0:
+        return  # máscara vacía
+
+    masked_frame = cv2.bitwise_and(frame, frame, mask=mask.astype(np.uint8))
+    filename = f"frame_{frame_idx:04d}_blob_{blob_idx:02d}.png"
+    path = os.path.join(export_folder, filename)
+    cv2.imwrite(path, masked_frame)
+  
 # === Inicialización del grafo temporal ===
 tracking_graph = defaultdict(list)
 
@@ -186,8 +204,11 @@ for i in range(len(mask_paths) - 1):
         })
         
         # Clasificar los blobs en individuales o de grupo
-        blob_type = clasificar_blob(blob_mask, flow=flow, usar_flow=False)
+        blob_type = clasificar_blob(blob_mask, flow=flow, usar_flow=True)
         tracking_graph[i][-1]["type"] = blob_type  #tracking_graph[i][-1] accede al último blob añadido al grafo en ese frame (el que acabamos de guardar)
+        if EXPORT_BLOBS:
+            exportar_blob_recortado(frame, blob_mask, i, label, BLOBS_EXPORT_FOLDER)
+
         
     # Visualizar los blobs en la imagen  
     BLOB_OUTPUT_FOLDER = os.path.join(OUTPUT_FOLDER, "blob_type")
