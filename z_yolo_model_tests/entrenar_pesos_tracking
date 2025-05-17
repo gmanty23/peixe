@@ -1,0 +1,217 @@
+import json
+import numpy as np
+from scipy.optimize import minimize
+from tqdm import tqdm
+import os
+import matplotlib.pyplot as plt
+from sklearn.metrics import log_loss
+
+# Ruta al dataset anotado
+DATASET_PATH = "/home/gmanty/code/output_20s/etiquetas_trayectorias.json"
+LABELS_DIR = "/home/gmanty/code/output_20s/tracking/tracking_pez2/labels"
+
+# Función para cargar los datos anotados
+with open(DATASET_PATH, "r") as f:
+    etiquetas = json.load(f)
+
+# Función para cargar las bboxes originales de cada frame
+def cargar_bboxes(frame_name):
+    path = os.path.join(LABELS_DIR, f"{frame_name}.txt")
+    if not os.path.exists(path):
+        return []
+    with open(path, 'r') as f:
+        lines = f.readlines()
+    bboxes = []
+    for l in lines:
+        parts = list(map(float, l.strip().split()))
+        if len(parts) < 6:
+            continue
+        x, y, w, h = parts[1:5]
+        cx, cy = x * 1024, y * 1024
+        bw, bh = w * 1024, h * 1024
+        x1 = int(cx - bw / 2)
+        y1 = int(cy - bh / 2)
+        x2 = int(cx + bw / 2)
+        y2 = int(cy + bh / 2)
+        bboxes.append([x1, y1, x2, y2])
+    return bboxes
+
+# Función de coste de conexión (con 5 características)
+def calcular_features(blob1, blob2, v_media=None):
+    def iou(b1, b2):
+        xa, ya, xb, yb = max(b1[0], b2[0]), max(b1[1], b2[1]), min(b1[2], b2[2]), min(b1[3], b2[3])
+        inter = max(0, xb - xa) * max(0, yb - ya)
+        area1 = (b1[2] - b1[0]) * (b1[3] - b1[1])
+        area2 = (b2[2] - b2[0]) * (b2[3] - b2[1])
+        union = area1 + area2 - inter
+        return inter / union if union != 0 else 0
+
+    def centroid(b):
+        return np.array([(b[0]+b[2])/2, (b[1]+b[3])/2])
+
+    def area(b):
+        return (b[2]-b[0]) * (b[3]-b[1])
+
+    def ratio(b):
+        w = b[2]-b[0]
+        h = b[3]-b[1]
+        return w/h if h != 0 else 0
+
+    d_pred = 0
+    if v_media is not None:
+        c1 = centroid(blob1["bbox"])
+        c2 = centroid(blob2["bbox"])
+        pred = c1 + v_media
+        d_pred = np.linalg.norm(pred - c2)
+
+    f = [
+        1 - iou(blob1["bbox"], blob2["bbox"]),
+        np.linalg.norm(centroid(blob1["bbox"]) - centroid(blob2["bbox"])),
+        abs(area(blob1["bbox"]) - area(blob2["bbox"])) / max(area(blob1["bbox"]), area(blob2["bbox"])) if area(blob2["bbox"]) > 0 else 0,
+        abs(ratio(blob1["bbox"]) - ratio(blob2["bbox"])) / max(ratio(blob1["bbox"]), ratio(blob2["bbox"])) if ratio(blob2["bbox"]) > 0 else 0,
+        d_pred
+    ]
+    return np.array(f)
+
+# Crear pares de continuidad y reasignación con negativos balanceados
+frame_names = sorted(etiquetas.keys())
+
+id2frames = {}
+for f in frame_names:
+    for k, v in etiquetas[f].items():
+        if k == "none": continue
+        v = int(v)
+        if v not in id2frames:
+            id2frames[v] = []
+        id2frames[v].append((f, int(k)))
+
+X_track, y_track = [], []
+X_reasig, y_reasig = [], []
+negativos_track, negativos_reasig = [], []
+
+for id_pez, apariciones in id2frames.items():
+    apariciones.sort()
+    ult_frame = None
+    ult_idx = None
+    for f_actual, idx_actual in apariciones:
+        bboxes_actual = cargar_bboxes(f_actual)
+        if idx_actual >= len(bboxes_actual):
+            continue
+        if ult_frame:
+            diff = frame_names.index(f_actual) - frame_names.index(ult_frame)
+            tipo = "track" if diff == 1 else "reasig"
+            b1 = {"bbox": cargar_bboxes(ult_frame)[ult_idx]}
+            b2 = {"bbox": bboxes_actual[idx_actual]}
+            v = np.array([(np.array(b2["bbox"][:2]) - np.array(b1["bbox"][:2]))])
+            v_media = v if v.shape[0] > 0 else None
+            fvec = calcular_features(b1, b2, v_media)
+            if tipo == "track":
+                X_track.append(fvec)
+                y_track.append(1)
+            else:
+                X_reasig.append(fvec)
+                y_reasig.append(1)
+        ult_frame, ult_idx = f_actual, idx_actual
+
+# Añadir negativos de tipo tracking y reasignación reales
+for id_pez, apariciones in id2frames.items():
+    apariciones.sort()
+    for i in range(len(apariciones) - 1):
+        f1, idx1 = apariciones[i]
+        f2, idx2 = apariciones[i+1]
+        bboxes1 = cargar_bboxes(f1)
+        bboxes2 = cargar_bboxes(f2)
+        if idx1 >= len(bboxes1) or idx2 >= len(bboxes2):
+            continue
+        b1 = {"bbox": bboxes1[idx1]}
+        if frame_names.index(f2) - frame_names.index(f1) == 1:
+            # Tracking negativo: en f2, añadir todos los negativos posibles (ID diferente)
+            for j in range(len(bboxes2)):
+                if j == idx2:
+                    continue
+                b2 = {"bbox": bboxes2[j]}
+                v = np.array([(np.array(b2["bbox"][:2]) - np.array(b1["bbox"][:2]))])
+                v_media = v if v.shape[0] > 0 else None
+                fvec = calcular_features(b1, b2, v_media)
+                negativos_track.append(fvec)
+        else:
+            # Reasignación negativo: en f2, añadir todos los negativos posibles (ID diferente)
+            for j in range(len(bboxes2)):
+                if j == idx2:
+                    continue
+                b2 = {"bbox": bboxes2[j]}
+                v = np.array([(np.array(b2["bbox"][:2]) - np.array(b1["bbox"][:2]))])
+                v_media = v if v.shape[0] > 0 else None
+                fvec = calcular_features(b1, b2, v_media)
+                negativos_reasig.append(fvec)
+X_track.extend(negativos_track)
+y_track.extend([0] * len(negativos_track))
+X_reasig.extend(negativos_reasig)
+y_reasig.extend([0] * len(negativos_reasig))
+
+# Función común de entrenamiento
+def entrenar(X, y, nombre):
+    if len(np.unique(y)) < 2:
+        raise ValueError(f"El conjunto '{nombre}' solo contiene una clase: {np.unique(y)}. No se puede entrenar log_loss.")
+    print(f"{nombre}: clases en y = {np.unique(y, return_counts=True)}")
+    loss_history = []
+    acc_history = []
+
+    def loss_fn(pesos):
+        weights = np.where(y == 1, 1.0 / np.sum(y == 1), 1.0 / np.sum(y == 0))
+        weights *= len(y) / 2
+        scores = np.dot(X, pesos)
+        probs = 1 / (1 + np.exp(-np.clip(scores, -100, 100)))
+        loss = log_loss(y, probs, sample_weight=weights)
+        loss_history.append(loss)
+        preds = (scores < 0).astype(int)
+        acc = (preds == y).mean()
+        acc_history.append(acc)
+        return loss
+
+    pesos_iniciales = np.ones(X.shape[1])
+    res = minimize(loss_fn, pesos_iniciales, method="L-BFGS-B", options={"disp": True})
+
+    out_dir = f"/home/gmanty/code/output_20s/entrenamiento_pesos/{nombre}"
+    os.makedirs(out_dir, exist_ok=True)
+    np.save(os.path.join(out_dir, "pesos.npy"), res.x)
+
+    plt.figure(figsize=(8, 4))
+    plt.plot(loss_history, color='blue')
+    plt.xlabel('Iteraciones')
+    plt.ylabel('Log Loss')
+    plt.title(f'Evolución de la pérdida ({nombre})')
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(os.path.join(out_dir, "pérdida.png"))
+    plt.close()
+
+    plt.figure(figsize=(8, 4))
+    plt.plot(acc_history, color='green')
+    plt.xlabel('Iteraciones')
+    plt.ylabel('Accuracy')
+    plt.title(f'Evolución de la accuracy ({nombre})')
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(os.path.join(out_dir, "accuracy.png"))
+    plt.close()
+
+    final_scores = np.dot(X, res.x)
+    final_preds = (final_scores < 0).astype(int)
+    acc = (final_preds == y).mean()
+
+    with open(os.path.join(out_dir, "resumen.txt"), "w") as f:
+        f.write(f"Resumen del entrenamiento de pesos ({nombre})")
+        f.write("-------------------------------")
+        f.write(f"Tipo: {nombre}")
+        f.write(f"Total pares: {len(X)}")
+        f.write(f"Negativos incluidos: {np.sum(y == 0)}")
+        f.write(f"Pesos optimizados: {res.x.tolist()}")
+        f.write(f"Accuracy final: {acc:.4f}")
+
+print(f"Total pares tracking: {len(X_track)}")
+print(f"Total pares reasignacion: {len(X_reasig)}")
+
+# Ejecutar entrenamientos
+entrenar(np.array(X_track), np.array(y_track), "tracking")
+entrenar(np.array(X_reasig), np.array(y_reasig), "reasignacion")

@@ -13,6 +13,8 @@ processing_GUI/procesamiento/cache
 tracking/classification/dataset_blobs
 tracking/classification/model
 tracking/classification/training_metrics
+runs/
+z_yolo_model_tests/datasets/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

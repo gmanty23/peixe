@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QPushButton, QFileDialog, 
                               QCheckBox, QLineEdit, QHBoxLayout, QProgressBar, QGridLayout,
-                              QGroupBox, QSizePolicy)
+                              QGroupBox, QSizePolicy, QDialog)
 from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtCore import Qt, QThread, Signal, QSettings
 from processing_GUI.procesamiento.preprocesado import  extraer_imagenes, redimensionar_imagenes, atenuar_fondo_imagenes, dividir_bloques
@@ -10,6 +10,7 @@ import shutil
 import cv2
 import glob
 from processing_GUI.ventanas.ventana_resultados_preprocesado import VentanaResultados
+from processing_GUI.ventanas.ventana_seleccion_ROI import VentanaSeleccionROI
 
 
 class WorkerThread(QThread):
@@ -18,7 +19,7 @@ class WorkerThread(QThread):
     progreso_general_signal = Signal(int) # Progreso general (0-100)
     progreso_especifico_signal = Signal(int) # Progreso de la etapa actual (0-100)
 
-    def __init__(self, video_path, output_path, adaptar_moment_flag, redimensionar_flag, width, height, atenuar_fondo_flag, sizeGrupo, factor_at, umbral_dif, apertura_flag, cierre_flag, dilatacion_flag, apertura_kernel_size, cierre_kernel_size, dilatacion_kernel_size, guardar_intermedias_flag):
+    def __init__(self, video_path, output_path, adaptar_moment_flag, adaptar_yolo_flag, redimensionar_flag, width, height, atenuar_fondo_flag, sizeGrupo, factor_at, umbral_dif, apertura_flag, cierre_flag, dilatacion_flag, apertura_kernel_size, cierre_kernel_size, dilatacion_kernel_size, guardar_intermedias_flag, bbox_recorte, bbox_tapado):
         super().__init__()
         self.video_path = video_path
         self.output_path = output_path
@@ -26,6 +27,7 @@ class WorkerThread(QThread):
         self.width = width
         self.height = height
         self.cancelar_flag = False
+        self.adaptar_yolo_flag = adaptar_yolo_flag
         self.redimensionar_flag = redimensionar_flag
         self.atenuar_fondo_flag = atenuar_fondo_flag
         self.sizeGrupo = sizeGrupo
@@ -38,6 +40,9 @@ class WorkerThread(QThread):
         self.cierre_kernel_size = cierre_kernel_size
         self.dilatacion_kernel_size = dilatacion_kernel_size
         self.guardar_intermedias_flag = guardar_intermedias_flag
+        self.bbox_recorte = bbox_recorte
+        self.bbox_tapado = bbox_tapado
+
 
 
     def run(self):
@@ -48,6 +53,31 @@ class WorkerThread(QThread):
             final_path = os.path.join(self.output_path, os.path.basename(self.video_path).split(".")[0])
             print(final_path)
             os.makedirs(final_path, exist_ok=True)  # Crear el directorio de salida si no existe
+
+            # Guardar configuración de preprocesado si hay recorte
+            if self.bbox_recorte:
+                x, y, w, h = map(int, self.bbox_recorte)
+                cap = cv2.VideoCapture(self.video_path)
+                ret, frame = cap.read()
+                cap.release()
+                if ret:
+                    H, W = frame.shape[:2]
+                    pixels_cropped = {
+                        "top": y,
+                        "left": x,
+                        "bottom": H - (y + h),
+                        "right": W - (x + w)
+                    }
+                preprocesado_info = {
+                    "bbox_recorte": [x, y, w, h],
+                    "recorte_pixels": pixels_cropped,
+                    "redimension_original": [w, h],
+                    "redimension_final": [self.width, self.height]
+                }
+                with open(os.path.join(final_path, "preprocesado_info.json"), "w") as f:
+                    import json
+                    json.dump(preprocesado_info, f, indent=4)
+
             # Etapa 1: Extraer imágenes del video 
             self.progreso_general_signal.emit(0)
             self.etapa_actual_signal.emit("Extrayendo imágenes del video...")
@@ -57,7 +87,7 @@ class WorkerThread(QThread):
             if self.video_path is None:
                     self.etapa_actual_signal.emit("Error al extraer las imágenes.")
                     return
-            images_path = extraer_imagenes(self.video_path, final_path, progress_callback=lambda p: self.progreso_especifico_signal.emit(p))
+            images_path = extraer_imagenes(self.video_path, final_path, self.bbox_recorte, self.bbox_tapado ,progress_callback=lambda p: self.progreso_especifico_signal.emit(p))
             og_path = images_path
             if images_path is None:
                     self.etapa_actual_signal.emit("Error al extraer las imágenes.")
@@ -73,7 +103,7 @@ class WorkerThread(QThread):
                     self.etapa_actual_signal.emit("Error en el directorio de las imágenes.")
                     return
                 self.etapa_actual_signal.emit("Reduciendo la resolución de las imágenes...")
-                images_path = redimensionar_imagenes(images_path, final_path,self.width, self.height, progress_callback=lambda p: self.progreso_especifico_signal.emit(p))  
+                images_path = redimensionar_imagenes(images_path, final_path,self.width, self.height, self.adaptar_yolo_flag, progress_callback=lambda p: self.progreso_especifico_signal.emit(p))  
                 resized_path = images_path
             self.progreso_general_signal.emit(40)
 
@@ -88,30 +118,40 @@ class WorkerThread(QThread):
                 images_path = atenuar_fondo_imagenes(images_path, final_path, self.sizeGrupo, self.factor_at, self.umbral_dif, self.apertura_flag, self.cierre_flag, self.dilatacion_flag, self.apertura_kernel_size, self.cierre_kernel_size, self.dilatacion_kernel_size, progress_callback_especifico=lambda p: self.progreso_especifico_signal.emit(p), progress_callback_etapa=lambda p: self.etapa_actual_signal.emit(p))
             self.progreso_general_signal.emit(60)
 
-            # Paso 4: Crear el workspace con la estructura pedida por cutie para el etiquetado
+            # Paso 4: Almacenar los resultados (Crear el workspace con la estructura pedida por cutie para el etiquetado o la carpeta para YOLOv8)
             #Cancelar si se ha cancelado el proceso
             if self.cancelar_flag:
                 self.etapa_actual_signal.emit("Preprocesado cancelado.")
                 return
             self.etapa_actual_signal.emit("Creando el Workspace final...")
-            # Creamos los directorios en funcion de si se ha adaptado a Moment o no
             debugpy.breakpoint()
-            if self.adaptar_moment_flag:
-                self.etapa_actual_signal.emit("Creando el Workspace final - Imágenes finales...")
-                dividir_bloques(images_path, final_path, img_type="images", progress_callback=lambda p: self.progreso_especifico_signal.emit(p))
-                if self.redimensionar_flag:
-                    self.etapa_actual_signal.emit("Creando el Workspace final - Imágenes Originales...")
-                    dividir_bloques(resized_path, final_path, img_type="imagenes_og", progress_callback=lambda p: self.progreso_especifico_signal.emit(p))
-                else:
-                    self.etapa_actual_signal.emit("Creando el Workspace final - Imágenes Originales...")
-                    dividir_bloques(og_path, final_path, img_type="imagenes_og", progress_callback=lambda p: self.progreso_especifico_signal.emit(p))
-            else:
-                images_final_path = os.path.join(final_path, "Workspace/images")
-                os.makedirs(images_final_path, exist_ok=True)  # Crear el directorio de salida si no existe
+
+            if self.adaptar_yolo_flag:
+                # Crear el directorio de salida para YOLOv8
+                images_final_path = os.path.join(final_path, "images_yolov8")
+                os.makedirs(images_final_path, exist_ok=True)
                 if os.path.exists(images_final_path):
                     shutil.rmtree(images_final_path)
                 os.rename(images_path, images_final_path) #Crea el directorio de salida si este no existe
-            self.progreso_general_signal.emit(80)
+                print("images_final_path")
+            else:
+                # Creamos los directorios en funcion de si se ha adaptado a Moment o no
+                if self.adaptar_moment_flag:
+                    self.etapa_actual_signal.emit("Creando el Workspace final - Imágenes finales...")
+                    dividir_bloques(images_path, final_path, img_type="images", progress_callback=lambda p: self.progreso_especifico_signal.emit(p))
+                    if self.redimensionar_flag:
+                        self.etapa_actual_signal.emit("Creando el Workspace final - Imágenes Originales...")
+                        dividir_bloques(resized_path, final_path, img_type="imagenes_og", progress_callback=lambda p: self.progreso_especifico_signal.emit(p))
+                    else:
+                        self.etapa_actual_signal.emit("Creando el Workspace final - Imágenes Originales...")
+                        dividir_bloques(og_path, final_path, img_type="imagenes_og", progress_callback=lambda p: self.progreso_especifico_signal.emit(p))
+                else:
+                    images_final_path = os.path.join(final_path, "Workspace/images")
+                    os.makedirs(images_final_path, exist_ok=True)  # Crear el directorio de salida si no existe
+                    if os.path.exists(images_final_path):
+                        shutil.rmtree(images_final_path)
+                    os.rename(images_path, images_final_path) 
+                self.progreso_general_signal.emit(80)
 
             # Paso 5: Eliminamos los directorios intermedios si la opcion esta marcada
             if not self.guardar_intermedias_flag:
@@ -194,18 +234,30 @@ class VentanaPreprocesado(QWidget):
         options_group = QGroupBox("Opciones de Preprocesado")
         options_layout = QVBoxLayout()
 
+        # Recortar/Tapar pecera manualmente
+        # -Checkbox para habilitar o deshabilitar el recorte de la pecera y el taponado de la zona de reflejos
+        self.checkbox_recorte_manual = QCheckBox("Recortar/Tapar pecera manualmente")
+        self.checkbox_recorte_manual.setChecked(False)
+        options_layout.addWidget(self.checkbox_recorte_manual)
+
         # Guardar imágenes intermedias
         # -Checkbox para habilitar o deshabilitar el guardado de imágenes intermedias
         self.checkbox_guardar_intermedias = QCheckBox("Guardar imágenes intermedias")
         self.checkbox_guardar_intermedias.setChecked(False)
-        self.checkbox_guardar_intermedias.setToolTip("Guardar imágenes intermedias para depuración")
         options_layout.addWidget(self.checkbox_guardar_intermedias)
 
         # Dividir por bloques
         # -Checkbox para habilitar o deshabilitar la división por bloques de 512 frames, tamaño de entrada de Moment
         self.checkbox_bloques_moment = QCheckBox("Adaptar a Moment (512 frames por bloque)")
-        self.checkbox_bloques_moment.setChecked(True)
+        self.checkbox_bloques_moment.setChecked(False)
         options_layout.addWidget(self.checkbox_bloques_moment)
+
+        # Adaptar a YOLOv8
+        # -Checkbox para adaptar a YOLOv8, redimensionando las imagenes a 1024x1024 con padding de color negro
+        self.checkbox_adaptar_yolo = QCheckBox("Adaptar a YOLOv8 (1024x1024 con padding)")
+        self.checkbox_adaptar_yolo.setChecked(False)
+        self.checkbox_adaptar_yolo.stateChanged.connect(self.toggle_adaptar_yolo)
+        options_layout.addWidget(self.checkbox_adaptar_yolo)
 
         
         # Redimensionar
@@ -412,6 +464,19 @@ class VentanaPreprocesado(QWidget):
             self.label_output.setText(f"Carpeta de salida seleccionada: {ultima_ruta_output}")
         
     
+    def toggle_adaptar_yolo(self):
+        if self.checkbox_adaptar_yolo.isChecked():
+            self.input_ancho.setText("1024")
+            self.input_alto.setText("1024")
+            self.input_ancho.setEnabled(False)
+            self.input_alto.setEnabled(False)
+        else:
+            self.input_ancho.setText("1920")
+            self.input_alto.setText("1080")
+            self.input_ancho.setEnabled(True)
+            self.input_alto.setEnabled(True)
+
+
     # Función para habilitar o deshabilitar los inputs de resolución según el estado del checkbox
     def toggle_input_resolucion(self):
         if self.checkbox_resolucion.isChecked():
@@ -471,6 +536,15 @@ class VentanaPreprocesado(QWidget):
             self.label_output.setText(f"Carpeta de salida seleccionada: {output}")
          
          
+    
+    # Función para seleccionar una bounding box en un frame
+    def seleccionar_bbox(self, frame, titulo="Seleccionar ROI"):
+        ventana_roi = VentanaSeleccionROI(frame, titulo)
+        if ventana_roi.exec() == QDialog.Accepted and ventana_roi.roi is not None:
+            return ventana_roi.roi
+        else:
+            return None
+        
     # Función para iniciar o cancelar el proceso de preprocesado
     def toggle_iniciar_preprocesado(self):
         #Cancelar el proceso si ya se ha iniciado
@@ -483,12 +557,32 @@ class VentanaPreprocesado(QWidget):
             output_path = self.label_output.text().split(":")[1].strip()
 
             if video_path and output_path:
+                # Si está activado el recorte, capturar y pedir las bounding boxes
+                bbox_recorte = None
+                bbox_tapado = None
+
+                if self.checkbox_recorte_manual.isChecked():
+                    cap = cv2.VideoCapture(video_path)
+                    ret, frame = cap.read()
+                    cap.release()
+                    if ret:
+                        bbox_recorte = self.seleccionar_bbox(frame, "Selecciona área para RECORTE")
+                        bbox_tapado = self.seleccionar_bbox(frame, "Selecciona área para TAPAR reflejo")
+                        print("Recorte seleccionado:", bbox_recorte)
+                        print("Tapado seleccionado:", bbox_tapado)
+                    else:
+                        print("Error al cargar el primer frame para selección manual.")
+
+                # Obtener el estado del checkbox de adaptar a YOLOv8 antes de redimensionar
+                adaptar_yolo_flag = self.checkbox_adaptar_yolo.isChecked()
+
                 # Obtener el estado del checkbox de redimensionar
                 adaptar_moment_flag = self.checkbox_bloques_moment.isChecked()
                 guardar_intermedias_flag = self.checkbox_guardar_intermedias.isChecked()
                 redimensionar_flag = self.checkbox_resolucion.isChecked()
                 width = int(self.input_ancho.text()) if self.input_ancho.text().isdigit() else 1920
                 height = int(self.input_alto.text()) if self.input_alto.text().isdigit() else 1080
+
                 # Obtener el estado del checkbox de atenuar el fondo y sus parámetros
                 atenuar_fondo_flag = self.checkbox_atenuar_fondo.isChecked()
                 sizeGrupo = int(self.input_sizeGrupo.text()) if self.input_sizeGrupo.text().isdigit() else 60
@@ -508,12 +602,15 @@ class VentanaPreprocesado(QWidget):
                 dilatacion_kernel_width = int(self.dilatacion_kernel_width.text()) if self.dilatacion_kernel_width.text().isdigit() else 3
                 dilatacion_kernel_height = int(self.dilatacion_kernel_height.text()) if self.dilatacion_kernel_height.text().isdigit() else 3
                 dilatacion_kernel_size = (dilatacion_kernel_width, dilatacion_kernel_height)
+                
                 #Crear y ejecutar el hilo de trabajo
-                self.worker_thread = WorkerThread(video_path, output_path,adaptar_moment_flag, redimensionar_flag, width, height, atenuar_fondo_flag, sizeGrupo, factor_at, umbral_dif, apertura_flag, cierre_flag, dilatacion_flag, apertura_kernel_size, cierre_kernel_size, dilatacion_kernel_size, guardar_intermedias_flag)
-                 # Conectar las señales del hilo de trabajo con las funciones de actualización de la interfaz
+                self.worker_thread = WorkerThread(video_path, output_path,adaptar_moment_flag, adaptar_yolo_flag, redimensionar_flag, width, height, atenuar_fondo_flag, sizeGrupo, factor_at, umbral_dif, apertura_flag, cierre_flag, dilatacion_flag, apertura_kernel_size, cierre_kernel_size, dilatacion_kernel_size, guardar_intermedias_flag, bbox_recorte, bbox_tapado)
+                
+                # Conectar las señales del hilo de trabajo con las funciones de actualización de la interfaz
                 self.worker_thread.etapa_actual_signal.connect(self.actualizar_etapa)
                 self.worker_thread.progreso_general_signal.connect(self.barra_progreso_etapas.setValue)
                 self.worker_thread.progreso_especifico_signal.connect(self.barra_progreso_especifica.setValue)
+                
                 # Conectar una señal para recibir la imagen procesada y mostrarla
                 final_path = os.path.join(output_path, os.path.basename(video_path).split(".")[0])
                 self.worker_thread.finished.connect(lambda: self.mostrar_resultado(final_path, adaptar_moment_flag))
@@ -574,7 +671,6 @@ class VentanaPreprocesado(QWidget):
         
         archivos.sort()  # Orden alfabético/numerico
         return archivos[0] if archivos else None
-
 
 
 

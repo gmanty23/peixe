@@ -6,9 +6,9 @@ from sklearn.cluster import DBSCAN
 import random
 
 # === CONFIGURACIÓN ===
-ROOT_FOLDER = "/home/gmanty/code/Workspace_prueba"
+ROOT_FOLDER = "/home/gmanty/code/USCL2-194221-194721/Workspace_bloque_1"
 MASK_FOLDER = os.path.join(ROOT_FOLDER, "or_masks")
-IMG_FOLDER = os.path.join(ROOT_FOLDER, "imagenes_og_re")
+IMG_FOLDER = os.path.join(ROOT_FOLDER, "imagenes_og")
 OUTPUT_FOLDER = os.path.join(ROOT_FOLDER, "outputs_tracking")
 OUTPUT_BLOBS_FOLDER = os.path.join(OUTPUT_FOLDER, "blobs_sin_clasificar")
 OUTPUT_FRAMES_FOLDER = os.path.join(OUTPUT_FOLDER, "frames")

@@ -1,0 +1,131 @@
+import os
+import cv2
+import json
+import glob
+import numpy as np
+
+# CONFIGURACION
+IMG_DIR = "/home/gmanty/code/output_20s/images_yolov8"
+LABELS_DIR = "/home/gmanty/code/output_20s/tracking/tracking_pez2/labels"  
+SAVE_PATH = "/home/gmanty/code/output_20s/etiquetas_trayectorias.json"
+
+# Cargar todas las imágenes
+img_paths = sorted(glob.glob(os.path.join(IMG_DIR, "*.jpg")))
+frame_names = [os.path.splitext(os.path.basename(p))[0] for p in img_paths]
+
+# Cargar blobs
+def cargar_bboxes(frame_name):
+    path = os.path.join(LABELS_DIR, f"{frame_name}.txt")
+    if not os.path.exists(path):
+        return []
+    with open(path, 'r') as f:
+        lines = f.readlines()
+    bboxes = []
+    for l in lines:
+        parts = list(map(float, l.strip().split()))
+        if len(parts) < 6:
+            continue
+        x, y, w, h = parts[1:5]  # ignoramos class_id y track_id
+        cx, cy = x * 1024, y * 1024
+        bw, bh = w * 1024, h * 1024
+        x1 = int(cx - bw / 2)
+        y1 = int(cy - bh / 2)
+        x2 = int(cx + bw / 2)
+        y2 = int(cy + bh / 2)
+        bboxes.append([x1, y1, x2, y2])
+    return bboxes
+
+# Estado global
+idx_frame = 0
+etiquetas = {}  # frame_name -> {idx_blob: id_pez}
+id_actual = 0
+seleccionado = {}  # frame_name -> idx_blob
+
+# UI
+ventana = "Etiquetado de Trayectoria"
+def dibujar_frame():
+    global idx_frame
+    frame_name = frame_names[idx_frame]
+    img = cv2.imread(img_paths[idx_frame])
+    bboxes = cargar_bboxes(frame_name)
+
+    for i, (x1, y1, x2, y2) in enumerate(bboxes):
+        color = (255, 255, 255)
+        label = None
+
+        if frame_name in etiquetas:
+            if i in etiquetas[frame_name]:
+                id_pez = etiquetas[frame_name][i]
+                color = (0, 255, 0) if id_pez == id_actual else (0, 0, 255)
+                label = f"ID {id_pez}"
+
+        if frame_name in seleccionado and seleccionado[frame_name] == i:
+            color = (0, 255, 0)
+            label = f"ID {id_actual}"
+
+        cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
+        if label is not None:
+            cv2.putText(img, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+
+    texto = f"Frame {idx_frame+1}/{len(frame_names)} | ID actual: {id_actual}"
+    cv2.putText(img, texto, (10, 1020), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
+    cv2.imshow(ventana, img)
+
+# Click
+def click(event, x, y, flags, param):
+    global idx_frame
+    if event != cv2.EVENT_LBUTTONDOWN:
+        return
+    frame_name = frame_names[idx_frame]
+    bboxes = cargar_bboxes(frame_name)
+    for i, (x1, y1, x2, y2) in enumerate(bboxes):
+        if x1 <= x <= x2 and y1 <= y <= y2:
+            if frame_name not in etiquetas:
+                etiquetas[frame_name] = {}
+            etiquetas[frame_name][i] = id_actual
+            print(f"Frame {frame_name}: asignado ID {id_actual} a bbox {i}")
+            dibujar_frame()
+            idx_frame = min(len(frame_names) - 1, idx_frame + 1)
+            break
+
+def guardar():
+    with open(SAVE_PATH, 'w') as f:
+        json.dump(etiquetas, f, indent=2)
+    print(f"Etiquetas guardadas en {SAVE_PATH}")
+
+# Interfaz
+cv2.namedWindow(ventana)
+cv2.setMouseCallback(ventana, click, None)
+
+while True:
+    dibujar_frame()
+    key = cv2.waitKey(0)
+
+    if key == 27:  # ESC
+        break
+    elif key == ord('d') or key == 83:  # → siguiente
+        idx_frame = min(len(frame_names)-1, idx_frame + 1)
+    elif key == ord('a') or key == 81:  # ← anterior
+        idx_frame = max(0, idx_frame - 1)
+                
+    elif key == ord('n'):  # nuevo pez
+        id_actual += 1
+        print(f"→ Cambiado a nuevo pez: {id_actual}")
+    elif key == ord('s'):  # guardar
+        guardar()
+    elif key == ord('x'):  # sin bbox para este frame
+        f = frame_names[idx_frame]
+        if f not in etiquetas:
+            etiquetas[f] = {}
+        etiquetas[f]["none"] = id_actual
+        print(f"Frame {f}: sin bbox para ID {id_actual}")
+    elif key == ord('z'):  # deshacer
+        f = frame_names[idx_frame]
+        if f in etiquetas:
+            for k, v in list(etiquetas[f].items()):
+                if v == id_actual:
+                    del etiquetas[f][k]
+                    print(f"Frame {f}: deshecha asignación de bbox {k} para ID {id_actual}")
+
+guardar()
+cv2.destroyAllWindows()

@@ -1,0 +1,105 @@
+import cv2
+import json
+import numpy as np
+import matplotlib.pyplot as plt
+
+# --- CONFIGURACIÓN MANUAL ---
+VIDEO_ORIGINAL_WIDTH = 3840
+VIDEO_ORIGINAL_HEIGHT = 2160
+
+imagen_input = "/home/gmanty/code/output_20s/images_yolov8/frame_0000.jpg"
+etiquetas_input = "/home/gmanty/code/output_20s/tracking/tracking_pez/labels/frame_0000.txt"
+json_input = "/home/gmanty/code/output_20s/preprocesado_info.json"
+output_path = "/home/gmanty/code/output_20s/salida.png"
+
+# --- TRANSFORMAR COORDENADAS ---
+def transformar_bbox_yolo_a_original(cx_norm, cy_norm, w_norm, h_norm, info):
+    x1_crop, y1_crop, _, _ = info["bbox_recorte"]
+    crop_w, crop_h = info["redimension_original"]
+    final_w, final_h = info["redimension_final"]
+
+    # Escalado aplicado en resize
+    scale = min(final_w / crop_w, final_h / crop_h)
+    resized_w = crop_w * scale
+    resized_h = crop_h * scale
+
+    pad_x = (final_w - resized_w) / 2
+    pad_y = (final_h - resized_h) / 2
+
+    # Coordenadas absolutas en la imagen 1024x1024
+    cx_p = cx_norm * final_w
+    cy_p = cy_norm * final_h
+    w_p = w_norm * final_w
+    h_p = h_norm * final_h
+
+    # Quitar padding y reescalar a tamaño real del recorte
+    cx_crop = (cx_p - pad_x) / scale
+    cy_crop = (cy_p - pad_y) / scale
+    w_crop = w_p / scale
+    h_crop = h_p / scale
+
+    # Coordenadas absolutas en imagen original global
+    cx_global = cx_crop + x1_crop
+    cy_global = cy_crop + y1_crop
+
+    x1 = cx_global - w_crop / 2
+    y1 = cy_global - h_crop / 2
+    x2 = cx_global + w_crop / 2
+    y2 = cy_global + h_crop / 2
+
+    return (cx_global, cy_global), (x1, y1, x2, y2)
+
+# --- RECONSTRUIR IMAGEN COMPLETA ---
+def reconstruir_imagen_con_bboxes(imagen_input, etiquetas_input, json_input, output_path):
+    # Cargar imagen 1024x1024
+    img = cv2.imread(imagen_input)
+    if img is None:
+        raise FileNotFoundError(f"No se pudo cargar la imagen: {imagen_input}")
+    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+    # Cargar información de preprocesado
+    with open(json_input, "r") as f:
+        info = json.load(f)
+
+    x1_crop, y1_crop, _, _ = info["bbox_recorte"]
+    crop_w, crop_h = info["redimension_original"]
+    final_w, final_h = info["redimension_final"]
+
+    # Recalcular escala y padding real usado
+    scale = min(final_w / crop_w, final_h / crop_h)
+    resized_w = int(crop_w * scale)
+    resized_h = int(crop_h * scale)
+    pad_x = int((final_w - resized_w) / 2)
+    pad_y = int((final_h - resized_h) / 2)
+
+    # Quitar bandas negras y reescalar al tamaño original del recorte
+    img_crop = img_rgb[pad_y:pad_y + resized_h, pad_x:pad_x + resized_w]
+    img_rescaled = cv2.resize(img_crop, (crop_w, crop_h), interpolation=cv2.INTER_LINEAR)
+
+    # Crear lienzo del tamaño real del vídeo original
+    img_global = np.zeros((VIDEO_ORIGINAL_HEIGHT, VIDEO_ORIGINAL_WIDTH, 3), dtype=np.uint8)
+
+    # Insertar el recorte en su posición original
+    img_global[y1_crop:y1_crop + crop_h, x1_crop:x1_crop + crop_w] = img_rescaled
+
+    # Leer y proyectar bounding boxes
+    with open(etiquetas_input, "r") as f:
+        for linea in f:
+            parts = linea.strip().split()
+            if len(parts) < 6:
+                continue
+            _, cx, cy, w, h, _ = map(float, parts)
+            _, (x1, y1, x2, y2) = transformar_bbox_yolo_a_original(cx, cy, w, h, info)
+            x1, y1, x2, y2 = map(int, [x1, y1, x2, y2])
+            cv2.rectangle(img_global, (x1, y1), (x2, y2), (0, 255, 0), 2)
+
+    # Mostrar y guardar
+    plt.figure(figsize=(16, 9))
+    plt.imshow(img_global)
+    plt.title("Imagen reconstruida con bounding boxes en coordenadas originales")
+    plt.axis('off')
+    plt.savefig(output_path)
+    plt.show()
+
+# ▶️ Ejecutar
+reconstruir_imagen_con_bboxes(imagen_input, etiquetas_input, json_input, output_path)

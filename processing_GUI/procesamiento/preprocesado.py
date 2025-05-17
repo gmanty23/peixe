@@ -25,7 +25,7 @@ import queue
     
 # Función que extrae los frames de un segmento de un video y los guarda como imágenes numeradas en un directorio
 # Si está activada la opción de adaptar a moment, se guardan en subdirectorios
-def extraer_imagenes_segmento(video_path, output_path, frame_inicial, frame_final,segment_id, progress_queue):
+def extraer_imagenes_segmento(video_path, output_path, frame_inicial, frame_final,segment_id, progress_queue, bbox_recorte=None, bbox_tapado=None):
 
     try:
         # Abrir el video por el frame inicial del segmento
@@ -42,6 +42,17 @@ def extraer_imagenes_segmento(video_path, output_path, frame_inicial, frame_fina
             ret, frame = vid.read()
             if not ret:
                 break
+
+            if bbox_tapado is not None:
+                # Primero tapar
+                x, y, w, h = map(int, bbox_tapado)
+                cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 0, 0), thickness=-1)
+
+            if bbox_recorte is not None:
+                # Luego recortar
+                x, y, w, h = map(int, bbox_recorte)
+                frame = frame[y:y+h, x:x+w]
+            
             frame_filename = os.path.join(output_path, f"frame_{frame_count:04d}.jpg")
             cv2.imwrite(frame_filename, frame)
             frame_count += 1
@@ -62,7 +73,7 @@ def extraer_imagenes_segmento(video_path, output_path, frame_inicial, frame_fina
 
 
 # Función que extrae los frames de un video y los guarda como imágenes numeradas en un directorio 
-def extraer_imagenes(video_path, output_path, progress_callback=None, num_procesos=None):
+def extraer_imagenes(video_path, output_path, bbox_recorte, bbox_tapado, progress_callback=None, num_procesos=None):
     
     try:
         start_time = time.time()
@@ -94,7 +105,7 @@ def extraer_imagenes(video_path, output_path, progress_callback=None, num_proces
         for i in range(num_procesos):
             frame_inicial = i * segment_size
             frame_final = (i+1) * segment_size - 1 if i < num_procesos - 1 else total_frames - 1
-            p = multiprocessing.Process(target=extraer_imagenes_segmento, args=(video_path, images_og_path, frame_inicial, frame_final,i,progress_queue))
+            p = multiprocessing.Process(target=extraer_imagenes_segmento, args=(video_path, images_og_path, frame_inicial, frame_final,i,progress_queue, bbox_recorte, bbox_tapado))
             procesos.append(p)
             p.start()
             
@@ -137,7 +148,7 @@ def extraer_imagenes(video_path, output_path, progress_callback=None, num_proces
 
 # --------------------- FUNCIÓNES PARA REDIMENSIONAR IMÁGENES ---------------------
 
-def redimensionar_imagenes_segmento(input_path, output_path, imagenes, ancho, alto, id_segmento, progress_queue):
+def redimensionar_imagenes_segmento(input_path, output_path, imagenes, ancho, alto, adaptar_yolo_flag, id_segmento, progress_queue):
     try:
 
         total_imagenes_segmento = len(imagenes)
@@ -145,7 +156,19 @@ def redimensionar_imagenes_segmento(input_path, output_path, imagenes, ancho, al
             img_path = os.path.join(input_path, img_name)
             img = cv2.imread(img_path)
             if img is not None:
-                img_resized = cv2.resize(img, (ancho, alto))
+                if adaptar_yolo_flag:
+                    # Aplicar padding ngro para YOLOv8
+                    h, w = img.shape[:2]
+                    scale = 1024 / max(h,w)
+                    resized = cv2.resize(img, (int(w*scale), int(h*scale)))
+                    top = (1024 - resized.shape[0]) // 2
+                    bottom = 1024 - resized.shape[0] - top
+                    left = (1024 - resized.shape[1]) // 2
+                    right = 1024 - resized.shape[1] - left
+                    img_resized = cv2.copyMakeBorder(resized, top, bottom, left, right, cv2.BORDER_CONSTANT, value=[0,0,0])
+                else:
+                    img_resized = cv2.resize(img, (ancho, alto))
+                
                 img_resized_path_segment = os.path.join(output_path, img_name)
                 cv2.imwrite(img_resized_path_segment, img_resized)
                 
@@ -157,7 +180,7 @@ def redimensionar_imagenes_segmento(input_path, output_path, imagenes, ancho, al
         print(f"Error en el redimensionamiento de imagenes en el proceso {id_segmento}: {e}")
         
         
-def redimensionar_imagenes(input_path, output_path, ancho, alto, progress_callback=None, num_procesos=None):
+def redimensionar_imagenes(input_path, output_path, ancho, alto, adaptar_yolo_flag,progress_callback=None, num_procesos=None):
     try:
         
         start_time = time.time()
@@ -190,7 +213,7 @@ def redimensionar_imagenes(input_path, output_path, ancho, alto, progress_callba
             frame_final = (i+1) * segment_size if i < num_procesos - 1 else total_imagenes
             imagenes_segmento = imagenes[frame_inicial:frame_final]  
             
-            p = multiprocessing.Process(target=redimensionar_imagenes_segmento, args=(input_path, images_resized_path, imagenes_segmento, ancho, alto, i, progress_queue))
+            p = multiprocessing.Process(target=redimensionar_imagenes_segmento, args=(input_path, images_resized_path, imagenes_segmento, ancho, alto, adaptar_yolo_flag, i, progress_queue))
             procesos.append(p)
             p.start()
             
@@ -247,7 +270,7 @@ def calcular_mediana_segmento(input_path, lotes_imagenes, id_proceso, progress_q
 
             if imagenes_segmento:
                 imagenes_array = np.array(imagenes_segmento)
-                mediana_grupo = np.median(imagenes_array, axis=0).astype(np.uint8)
+                mediana_grupo = np.percentile(imagenes_array, 65, axis=0).astype(np.uint8)
 
                 mediana_grupo_path = os.path.join(output_path, f"mediana_grupo_{indice_lote+1}.jpg")
                 cv2.imwrite(mediana_grupo_path, mediana_grupo)
@@ -267,7 +290,7 @@ def reducir_medianas_jerarquicamente(medianas, max_grupo=60):
         for i in range(0, len(medianas), max_grupo):
             grupo = medianas[i:i + max_grupo]
             grupo_array = np.array(grupo)
-            mediana_grupo = np.median(grupo_array, axis=0).astype(np.uint8)
+            mediana_grupo = np.percentile(grupo_array, 65, axis=0).astype(np.uint8)
             nuevas_medianas.append(mediana_grupo)
         medianas = nuevas_medianas
     return medianas
@@ -338,7 +361,7 @@ def calcular_mediana(input_path, sizeGrupo, total_imagenes, imagenes, progress_c
 
         if medianas_intermedias:
             medianas_reducidas = reducir_medianas_jerarquicamente(medianas_intermedias, sizeGrupo)
-            fondo_final = np.median(np.array(medianas_reducidas), axis=0).astype(np.uint8)
+            fondo_final = np.percentile(medianas_reducidas, 65, axis=0).astype(np.uint8)
             cv2.imwrite("processing_GUI/procesamiento/cache/fondo_final/fondo_final.jpg", fondo_final)
 
             print("Mediana final calculada")

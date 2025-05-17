@@ -1,0 +1,33 @@
+from ultralytics import YOLO
+import cv2
+import os
+
+# === Configuración ===
+MODEL_NAME = "akridge/yolo8-fish-detector-grayscale"
+INPUT_FOLDER = "/home/gmanty/code/Workspace_prueba/imagenes_og_re_50"
+OUTPUT_FOLDER = "/home/gmanty/code/Workspace_prueba/detecciones_yolo"
+MODEL_PATH = "/home/gmanty/code/pruebas_YOLO/yolov8n_fish_trained.pt"  # Ruta al modelo entrenado
+os.makedirs(OUTPUT_FOLDER, exist_ok=True)
+
+# === Cargar modelo ===
+model = YOLO(MODEL_PATH)
+
+# === Inferencia sobre las imágenes ===
+input_images = [f for f in os.listdir(INPUT_FOLDER) if f.endswith('.jpg') or f.endswith('.png')]
+
+for img_name in input_images:
+    img_path = os.path.join(INPUT_FOLDER, img_name)
+    img = cv2.imread(img_path)
+
+    results = model.predict(source=img, imgsz=1088, conf=0.05, iou = 0.9, save=False)  # conf más bajo
+
+    for r in results:
+        boxes = r.boxes.xyxy.cpu().numpy()  # coordenadas (x_min, y_min, x_max, y_max)
+        for box in boxes:
+            x1, y1, x2, y2 = map(int, box)
+            cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+
+    output_path = os.path.join(OUTPUT_FOLDER, img_name)
+    cv2.imwrite(output_path, img)
+
+print("✅ Detecciones YOLO guardadas en:", OUTPUT_FOLDER)
