@@ -38,7 +38,7 @@ class EstadoProceso:
             self.on_video_progreso(index)
 
 # ---------------------- Utilidades ----------------------
-def extraer_frames(video_path, output_folder, resize_enabled=False, resize_dims=(1920, 1080)):
+def extraer_frames(video_path, output_folder, resize_enabled=False, resize_dims=(1920, 1080), bbox_recorte=None):
     os.makedirs(output_folder, exist_ok=True)
     cap = cv2.VideoCapture(video_path)
     frame_idx = 0
@@ -46,6 +46,9 @@ def extraer_frames(video_path, output_folder, resize_enabled=False, resize_dims=
         ret, frame = cap.read()
         if not ret:
             break
+        if bbox_recorte:
+            x, y, w, h = map(int, bbox_recorte)
+            frame = frame[y:y+h, x:x+w]
         if resize_enabled:
             frame = cv2.resize(frame, resize_dims)
         frame_path = os.path.join(output_folder, f"frame_{frame_idx:05d}.jpg")
@@ -120,7 +123,7 @@ def aplicar_pipeline_morfologica(mask, pipeline):
             mask = cv2.erode(mask, kernel)
     return mask
 
-def procesar_segmento(imagenes, input_path, output_path, fondo, umbral, pipeline, q):
+def procesar_segmento(imagenes, input_path, output_path, fondo, pipeline, q):
     try:
         os.makedirs(output_path, exist_ok=True)
         for img_name in imagenes:
@@ -128,10 +131,32 @@ def procesar_segmento(imagenes, input_path, output_path, fondo, umbral, pipeline
             img = cv2.imread(os.path.join(input_path, img_name))
             if img is None:
                 continue
+            
             diff = cv2.absdiff(img, fondo)
             gray = cv2.cvtColor(diff, cv2.COLOR_BGR2GRAY)
-            _, mask = cv2.threshold(gray, umbral, 255, cv2.THRESH_BINARY)
-            mask = aplicar_pipeline_morfologica(mask, pipeline)
+
+            # Paso de umbralización como parte del pipeline
+            if pipeline and pipeline[0]["op"] == "umbral":
+                valor = pipeline[0].get("valor", 15)
+                _, mask = cv2.threshold(gray, valor, 255, cv2.THRESH_BINARY)
+                pipeline_proc = pipeline[1:]  # el resto del pipeline
+            elif pipeline and pipeline[0]["op"] == "adaptativo":
+                block_size = pipeline[0].get("block_size", 11)
+                C = pipeline[0].get("C", 2)
+                method = pipeline[0].get("method", "mean")
+                adaptive_method = cv2.ADAPTIVE_THRESH_MEAN_C if method == "mean" else cv2.ADAPTIVE_THRESH_GAUSSIAN_C
+
+                mask = cv2.adaptiveThreshold(gray, 255,
+                                            adaptive_method,
+                                            cv2.THRESH_BINARY,
+                                            block_size, C)
+                pipeline_proc = pipeline[1:]
+            else:
+                raise ValueError("El primer paso del pipeline debe ser 'umbral' o 'adaptativo'")
+
+            # Resto del pipeline
+            mask = aplicar_pipeline_morfologica(mask, pipeline_proc)
+
             cv2.imwrite(os.path.join(output_path, img_name), mask)
             #print(f"[Segmento] Guardada máscara: {img_name}")
             q.put(1)
@@ -141,11 +166,12 @@ def procesar_segmento(imagenes, input_path, output_path, fondo, umbral, pipeline
 
 # ---------------------- Flujo principal ----------------------
 def procesar_videos_con_morfologia(video_fondo, videos_dir, output_dir,
-                                   percentil, grupo_size, umbral, nucleos,
+                                   percentil, grupo_size, nucleos,
                                    pipeline_ops, estado=None,
                                    usar_imagen_fondo=False, ruta_imagen_fondo=None,
-                                   resize_enabled=False, resize_dims=(1920, 1080)):
+                                   resize_enabled=False, resize_dims=(1920, 1080), bbox_recorte=None):
     try:
+
         if usar_imagen_fondo and ruta_imagen_fondo:
             fondo = cv2.imread(ruta_imagen_fondo)
             if fondo is None:
@@ -167,8 +193,19 @@ def procesar_videos_con_morfologia(video_fondo, videos_dir, output_dir,
             shutil.rmtree(fondo_frames_dir)
 
         if fondo is not None:
-            os.makedirs(output_dir, exist_ok=True)
-            cv2.imwrite(os.path.join(output_dir, "fondo_calculado.jpg"), fondo)
+            if bbox_recorte:
+                fondo_sin_recorte = fondo.copy()
+                x, y, w, h = bbox_recorte
+                fondo = fondo[y:y+h, x:x+w]
+                if resize_enabled:
+                    fondo = cv2.resize(fondo, resize_dims)
+                os.makedirs(output_dir, exist_ok=True)
+                cv2.imwrite(os.path.join(output_dir, "fondo_calculado.jpg"), fondo_sin_recorte)
+            else:
+                if resize_enabled:
+                    fondo = cv2.resize(fondo, resize_dims)
+                os.makedirs(output_dir, exist_ok=True)
+                cv2.imwrite(os.path.join(output_dir, "fondo_calculado.jpg"), fondo)
         else:
             if estado:
                 estado.emitir_error("No se pudo obtener el fondo (imagen o video).")
@@ -190,7 +227,20 @@ def procesar_videos_con_morfologia(video_fondo, videos_dir, output_dir,
             video_path = os.path.join(videos_dir, video)
             frames_dir = os.path.join("__frames_tmp__", Path(video).stem)
             output_masks = os.path.join(output_dir, f"mascaras_{Path(video).stem}")
-            imagenes = extraer_frames(video_path, frames_dir, resize_enabled, resize_dims)
+            if bbox_recorte:
+                os.makedirs(output_masks, exist_ok=True)
+                h_img, w_img = fondo.shape[:2]
+                x, y, w, h = bbox_recorte
+                recorte_info = {
+                    "left": x,
+                    "top": y,
+                    "right": w_img - (x + w),
+                    "bottom": h_img - (y + h)
+                }
+                with open(os.path.join(output_masks, "recorte_morphology.json"), "w") as f:
+                    json.dump(recorte_info, f, indent=4)
+
+            imagenes = extraer_frames(video_path, frames_dir, resize_enabled, resize_dims, bbox_recorte)
             if not imagenes:
                 if estado:
                     estado.emitir_error("No se encontraron imágenes para procesar.")
@@ -205,7 +255,7 @@ def procesar_videos_con_morfologia(video_fondo, videos_dir, output_dir,
                 segmento = imagenes[ini:fin]
                 p = multiprocessing.Process(
                     target=procesar_segmento,
-                    args=(segmento, frames_dir, output_masks, fondo, umbral, pipeline, q)
+                    args=(segmento, frames_dir, output_masks, fondo, pipeline, q)
                 )
                 procesos.append(p)
                 p.start()

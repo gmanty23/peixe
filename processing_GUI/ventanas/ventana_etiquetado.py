@@ -10,6 +10,7 @@ import subprocess
 import shutil
 import json
 from processing_GUI.procesamiento.etiquetado_morfologia import procesar_videos_con_morfologia, EstadoProceso
+import cv2
 
 class WorkerThreadMorfología(QThread):
     progreso = Signal(int)
@@ -18,20 +19,20 @@ class WorkerThreadMorfología(QThread):
     progreso_video_actual = Signal(int)
     total_videos_progreso = Signal(int)
 
-    def __init__(self, video_fondo, videos_dir, output_dir, percentil, grupo_size, umbral, nucleos, pipeline_ops):
+    def __init__(self, video_fondo, videos_dir, output_dir, percentil, grupo_size, nucleos, pipeline_ops, bbox_recorte):
         super().__init__()
         self.video_fondo = video_fondo
         self.videos_dir = videos_dir
         self.output_dir = output_dir
         self.percentil = percentil
         self.grupo_size = grupo_size
-        self.umbral = umbral
         self.nucleos = nucleos
         self.pipeline_ops = pipeline_ops
         self.usar_imagen_fondo = False
         self.ruta_imagen_fondo = None
         self.resize_enabled = False
         self.resize_dims = (1920, 1080)
+        self.bbox_recorte = bbox_recorte
 
     def run(self):
         estado = EstadoProceso()
@@ -47,14 +48,14 @@ class WorkerThreadMorfología(QThread):
             self.output_dir,
             self.percentil,
             self.grupo_size,
-            self.umbral,
             self.nucleos,
             self.pipeline_ops,
             estado,
             usar_imagen_fondo=self.usar_imagen_fondo,
             ruta_imagen_fondo=self.ruta_imagen_fondo,
             resize_enabled=self.resize_enabled,
-            resize_dims=self.resize_dims
+            resize_dims=self.resize_dims,
+            bbox_recorte=self.bbox_recorte
         )
 
 
@@ -65,7 +66,7 @@ class VentanaEtiquetado(QMainWindow):
         super().__init__()
         self.parent_window = parent  # Referencia a la ventana principal
         self.setWindowTitle("Herramienta de Etiquetado")
-        self.setMinimumSize(500, 250)
+        self.setMinimumSize(600, 800)
         self.setup_ui()
         self.setup_styles()
 
@@ -404,6 +405,21 @@ class VentanaEtiquetado(QMainWindow):
         morphology_widget = QWidget()
         morphology_layout = QVBoxLayout(morphology_widget)
 
+        # Seleccion de recorte
+        self.checkbox_recorte_manual = QCheckBox("Recorte manual")
+        self.checkbox_recorte_manual.setChecked(False)
+        morphology_layout.addWidget(self.checkbox_recorte_manual)
+
+        # Selección de núcleos
+        cores_layout = QHBoxLayout()
+        cores_label = QLabel("Número de núcleos:")
+        self.cores_spinbox = QSpinBox()
+        self.cores_spinbox.setRange(1, os.cpu_count())
+        self.cores_spinbox.setValue(7)
+        cores_layout.addWidget(cores_label)
+        cores_layout.addWidget(self.cores_spinbox)
+        morphology_layout.addLayout(cores_layout)
+
         # Redimensionado de imágenes
         resize_group = QGroupBox("Redimensionar imágenes (opcional)")
         resize_layout = QHBoxLayout()
@@ -426,16 +442,6 @@ class VentanaEtiquetado(QMainWindow):
 
         resize_group.setLayout(resize_layout)
         morphology_layout.addWidget(resize_group)
-
-        # Selección de núcleos
-        cores_layout = QHBoxLayout()
-        cores_label = QLabel("Número de núcleos:")
-        self.cores_spinbox = QSpinBox()
-        self.cores_spinbox.setRange(1, os.cpu_count())
-        self.cores_spinbox.setValue(7)
-        cores_layout.addWidget(cores_label)
-        cores_layout.addWidget(self.cores_spinbox)
-        morphology_layout.addLayout(cores_layout)
 
         # Selección de los parámetros de cálculo de fondo
         fondo_group = QGroupBox("Cálculo de fondo")
@@ -474,16 +480,52 @@ class VentanaEtiquetado(QMainWindow):
         fondo_group.setLayout(fondo_layout)
         morphology_layout.addWidget(fondo_group)
 
-        # Umbral de diferencia
-        umbral_layout = QHBoxLayout()
-        umbral_label = QLabel("Umbral de diferencia:")
+        # Selección de las caracterización del umbral
+        umbral_group = QGroupBox("Umbral")
+        umbral_layout = QVBoxLayout()
+
+        self.umbral_combo = QComboBox()
+        self.umbral_combo.addItems(["Global", "Adaptativo"])
+        self.umbral_combo.currentTextChanged.connect(self.actualizar_parametros_umbral)
+        umbral_layout.addWidget(QLabel("Tipo de umbral:"))
+        umbral_layout.addWidget(self.umbral_combo)
+
+        # Parámetros para el umbral global y adaptativo
+        self.umbral_global_widget = QWidget()
+        umbral_global_layout = QHBoxLayout(self.umbral_global_widget)
+        umbral_label = QLabel("Valor de umbral:")
         self.umbral_spinbox = QDoubleSpinBox()
         self.umbral_spinbox.setRange(0, 255)
         self.umbral_spinbox.setValue(15)
         self.umbral_spinbox.setSingleStep(1)
-        umbral_layout.addWidget(umbral_label)
-        umbral_layout.addWidget(self.umbral_spinbox)
-        morphology_layout.addLayout(umbral_layout)
+        umbral_global_layout.addWidget(umbral_label)
+        umbral_global_layout.addWidget(self.umbral_spinbox)
+
+        self.umbral_adaptativo_widget = QWidget()
+        umbral_adaptativo_layout = QHBoxLayout(self.umbral_adaptativo_widget)
+        self.block_size_spinbox = QSpinBox()
+        self.block_size_spinbox.setRange(3, 999)
+        self.block_size_spinbox.setSingleStep(2)
+        self.block_size_spinbox.setValue(11)
+        self.C_spinbox = QSpinBox()
+        self.C_spinbox.setRange(0, 50)
+        self.C_spinbox.setValue(2)
+        # Selector de método adaptativo
+        self.adaptive_method_combo = QComboBox()
+        self.adaptive_method_combo.addItems(["Media", "Gaussiana"])
+        umbral_adaptativo_layout.addWidget(QLabel("Método:"))
+        umbral_adaptativo_layout.addWidget(self.adaptive_method_combo)
+        umbral_adaptativo_layout.addWidget(QLabel("Block size:"))
+        umbral_adaptativo_layout.addWidget(self.block_size_spinbox)
+        umbral_adaptativo_layout.addWidget(QLabel("C:"))
+        umbral_adaptativo_layout.addWidget(self.C_spinbox)
+
+        umbral_layout.addWidget(self.umbral_global_widget)
+        umbral_layout.addWidget(self.umbral_adaptativo_widget)
+
+        umbral_group.setLayout(umbral_layout)
+        morphology_layout.addWidget(umbral_group)
+        self.actualizar_parametros_umbral("Global")
 
         # Creación pipeline operaciones morfológicas
         morph_group = QGroupBox("Operaciones morfológicas")
@@ -534,18 +576,51 @@ class VentanaEtiquetado(QMainWindow):
         videos_dir = workspace
         percentil = self.percentile_spinbox.value()
         grupo_size = self.mediana_group_size_spinbox.value()
-        umbral = self.umbral_spinbox.value()
         nucleos = self.cores_spinbox.value()
+
+        bbox_recorte = None
+        if self.checkbox_recorte_manual.isChecked():
+            if usar_imagen_fondo:
+                frame = cv2.imread(fondo_manual)
+                if frame is None:
+                    QMessageBox.critical(self, "Error", "No se pudo abrir la imagen de fondo para seleccionar el recorte.")
+                    return
+            else:
+                cap = cv2.VideoCapture(video_fondo)
+                ret, frame = cap.read()
+                cap.release()
+                if not ret:
+                    QMessageBox.critical(self, "Error", "No se pudo abrir el video para seleccionar el recorte.")
+                    return
+
+            bbox_recorte = self.seleccionar_bbox(frame, "Selecciona área para RECORTE")
+
 
         pipeline_ops = []
         resize_enabled = self.resize_checkbox.isChecked()
         resize_dims = (self.resize_width_spinbox.value(), self.resize_height_spinbox.value())
+        # Insertar umbral como paso inicial del pipeline
+        tipo_umbral = self.umbral_combo.currentText()
+        adaptive_method_text = self.adaptive_method_combo.currentText()
+        adaptive_method = "mean" if adaptive_method_text == "Media" else "gaussian"
+        if tipo_umbral == "Global":
+            pipeline_ops.append({
+                "op": "umbral",
+                "valor": self.umbral_spinbox.value()
+            })
+        else:
+            pipeline_ops.append({
+                "op": "adaptativo",
+                "block_size": self.block_size_spinbox.value(),
+                "C": self.C_spinbox.value(),
+                "method": adaptive_method
+            })
+        # Añadir operaciones morfológicas
         for entry in self.morph_entries:
             op = entry["op"].currentText().lower()
             kx = entry["kernel_x"].value()
             ky = entry["kernel_y"].value()
             pipeline_ops.append({"op": op, "kernel": [kx, ky]})
-
 
         self.worker = WorkerThreadMorfología(
             video_fondo or "",
@@ -553,9 +628,9 @@ class VentanaEtiquetado(QMainWindow):
             output_dir,
             percentil,
             grupo_size,
-            umbral,
             nucleos,
-            pipeline_ops
+            pipeline_ops,
+            bbox_recorte
         )
         self.worker.usar_imagen_fondo = usar_imagen_fondo
         self.worker.ruta_imagen_fondo = fondo_manual if usar_imagen_fondo else None
@@ -613,5 +688,22 @@ class VentanaEtiquetado(QMainWindow):
         self.barra_progreso_videos.setVisible(False)
         self.barra_progreso.setVisible(False)
             
+    def actualizar_parametros_umbral(self,tipo):
+        if tipo == "Global":
+            self.umbral_global_widget.show()
+            self.umbral_adaptativo_widget.hide()
+        elif tipo == "Adaptativo":
+            self.umbral_global_widget.hide()
+            self.umbral_adaptativo_widget.show()
             
-    
+    def seleccionar_bbox(self, frame, titulo="Seleccionar ROI"):
+        from processing_GUI.ventanas.ventana_seleccion_ROI import VentanaSeleccionROI
+        from PySide6.QtWidgets import QDialog
+
+        ventana_roi = VentanaSeleccionROI(frame, titulo)
+        if ventana_roi.exec() == QDialog.Accepted and ventana_roi.roi is not None:
+            return ventana_roi.roi
+        else:
+            return None
+
+        
