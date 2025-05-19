@@ -11,6 +11,7 @@ import shutil
 import json
 from processing_GUI.procesamiento.etiquetado_morfologia import procesar_videos_con_morfologia, EstadoProceso
 import cv2
+from processing_GUI.procesamiento.etiquetado_yolo import procesar_yolo, reproyectar_txts_yolo
 
 class WorkerThreadMorfología(QThread):
     progreso = Signal(int)
@@ -594,7 +595,7 @@ class VentanaEtiquetado(QMainWindow):
                     return
 
             bbox_recorte = self.seleccionar_bbox(frame, "Selecciona área para RECORTE")
-
+            print(">>> ROI devuelta por seleccionar_bbox:", bbox_recorte)
 
         pipeline_ops = []
         resize_enabled = self.resize_checkbox.isChecked()
@@ -659,13 +660,139 @@ class VentanaEtiquetado(QMainWindow):
         """Crea el layout para los parámetros de YOLOv8"""
         yolo_widget = QWidget()
         yolo_layout = QVBoxLayout(yolo_widget)
-        
+
+        # Recorte manual
+        self.yolo_checkbox_recorte = QCheckBox("Recorte manual")
+        yolo_layout.addWidget(self.yolo_checkbox_recorte)
+
+        # Tamaño de imagen
+        resize_layout = QHBoxLayout()
+        resize_label = QLabel("Tamaño (imgsz):")
+        self.yolo_resize_combo = QComboBox()
+        self.yolo_resize_combo.addItems(["640", "1024"])
+        resize_layout.addWidget(resize_label)
+        resize_layout.addWidget(self.yolo_resize_combo)
+        yolo_layout.addLayout(resize_layout)
+
+        # Directorio de salida
+        yolo_layout.addLayout(self.create_directory_selector())
 
         return yolo_widget
 
     def ejecutar_yolo(self):
-        QMessageBox.information(self, "YOLOv8", "Este método aún no está implementado.")
-        return
+
+
+        videos_dir = self.dir_lineedit.text()
+        if not os.path.exists(videos_dir):
+            QMessageBox.critical(self, "Error", "Debes seleccionar un directorio válido con vídeos.")
+            return
+
+        imgsz = int(self.yolo_resize_combo.currentText())
+        if imgsz == 640:
+            model_path = "processing_GUI/procesamiento/yolo_models/best_640.pt"
+        elif imgsz == 1024:
+            model_path = "processing_GUI/procesamiento/yolo_models/best_1024.pt"
+        else:
+            QMessageBox.critical(self, "Error", "Tamaño no válido.")
+            return
+
+        # Seleccionar recorte si procede
+        bbox_recorte = None
+        if self.yolo_checkbox_recorte.isChecked():
+            video_files = [f for f in os.listdir(videos_dir) if f.endswith(('.avi', '.mp4'))]
+            if not video_files:
+                QMessageBox.critical(self, "Error", "No hay vídeos en el directorio.")
+                return
+            primer_video = os.path.join(videos_dir, video_files[0])
+            cap = cv2.VideoCapture(primer_video)
+            ret, frame = cap.read()
+            cap.release()
+            if not ret:
+                QMessageBox.critical(self, "Error", "No se pudo abrir el vídeo para recorte.")
+                return
+            bbox_recorte = self.seleccionar_bbox(frame, "Selecciona área para RECORTE")
+
+        # Inicializar estado
+        self.barra_progreso.setValue(0)
+        self.barra_progreso.setVisible(True)
+        self.etiqueta_etapa.setVisible(True)
+        self.barra_progreso_videos.setVisible(True)
+        self.etiqueta_videos.setVisible(True)
+
+        estado = EstadoProceso()
+        estado.on_etapa = self.etiqueta_etapa.setText
+        estado.on_progreso = self.barra_progreso.setValue
+        estado.on_error = lambda msg: QMessageBox.critical(self, "Error", msg)
+        estado.on_total_videos = lambda total: self.barra_progreso_videos.setMaximum(total)
+        estado.on_video_progreso = self.barra_progreso_videos.setValue
+
+        # Listar vídeos
+        videos = [f for f in os.listdir(videos_dir) if f.endswith(('.avi', '.mp4'))]
+        total = len(videos)
+        estado.emitir_total_videos(total)
+
+        for i, video_file in enumerate(videos):
+            estado.emitir_video_progreso(i)
+
+            nombre_base = Path(video_file).stem
+            ruta_video = os.path.join(videos_dir, video_file)
+            carpeta_video = os.path.join(videos_dir, nombre_base)
+            os.makedirs(carpeta_video, exist_ok=True)
+            salida_video = os.path.join(carpeta_video, "bbox_yolo")
+
+            # Preprocesado
+            imagenes_path, recorte_margenes, padding_info = procesar_yolo(
+                ruta_video, salida_video, imgsz, bbox_recorte, estado
+            )
+            if imagenes_path is None:
+                continue
+
+            # Ejecutar comando YOLO
+            cmd = f"yolo task=detect mode=predict model='{model_path}' source='{imagenes_path}' imgsz={imgsz} name=etiquetado_yolo project='{salida_video}' save_txt=True"
+
+            self.etiqueta_etapa.setText("YOLO en marcha. Revisa la consola para ver el progreso...")
+            self.barra_progreso.setRange(0, 0)  # barra indeterminada
+
+            try:
+                subprocess.run(cmd, shell=True, check=True)
+            except subprocess.CalledProcessError as e:
+                QMessageBox.critical(self, "Error en YOLO", f"Ocurrió un error al ejecutar YOLO:\n{e}")
+                continue  # saltar al siguiente vídeo
+
+            # Ruta de la carpeta temporal que crea YOLO dentro de bbox_yolo/
+            etiquetado_yolo_dir = os.path.join(salida_video, "etiquetado_yolo")
+            labels_dir_origen = os.path.join(etiquetado_yolo_dir, "labels")
+            labels_dir_destino = os.path.join(salida_video, "labels")
+
+            # Si existen labels, los movemos
+            if os.path.exists(labels_dir_origen):
+                if os.path.exists(labels_dir_destino):
+                    shutil.rmtree(labels_dir_destino)
+                shutil.move(labels_dir_origen, labels_dir_destino)
+
+            # Eliminar toda la carpeta intermedia
+            if os.path.exists(etiquetado_yolo_dir):
+                shutil.rmtree(etiquetado_yolo_dir)
+                
+            # Reproyectar coordenadas
+            labels_dir = os.path.join(salida_video, "etiquetado_yolo", "labels")
+            reproyectados_dir = os.path.join(salida_video, "etiquetado_yolo", "labels_reproyectados")
+            if os.path.exists(labels_dir):
+                estado.emitir_etapa("Reproyectando coordenadas...")
+                estado.emitir_progreso(0)
+                reproyectar_txts_yolo(labels_dir, imgsz, padding_info, recorte_margenes, reproyectados_dir, estado)
+                shutil.rmtree(labels_dir, ignore_errors=True)
+                os.rename(reproyectados_dir, labels_dir)
+
+            # Finalizar este vídeo
+            self.barra_progreso.setRange(0, 100)
+            self.barra_progreso.setValue(100)
+
+        estado.emitir_etapa("Detección completada.")
+        self.barra_progreso_videos.setValue(total)
+
+
+        self.resetear_barras_progreso()
 
     def on_method_changed(self, metodo):
         self.method_params_container.setCurrentIndex(metodo)

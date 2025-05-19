@@ -193,19 +193,14 @@ def procesar_videos_con_morfologia(video_fondo, videos_dir, output_dir,
             shutil.rmtree(fondo_frames_dir)
 
         if fondo is not None:
+            fondo_sin_recorte = fondo.copy()
             if bbox_recorte:
-                fondo_sin_recorte = fondo.copy()
-                x, y, w, h = bbox_recorte
-                fondo = fondo[y:y+h, x:x+w]
-                if resize_enabled:
-                    fondo = cv2.resize(fondo, resize_dims)
-                os.makedirs(output_dir, exist_ok=True)
-                cv2.imwrite(os.path.join(output_dir, "fondo_calculado.jpg"), fondo_sin_recorte)
-            else:
-                if resize_enabled:
-                    fondo = cv2.resize(fondo, resize_dims)
-                os.makedirs(output_dir, exist_ok=True)
-                cv2.imwrite(os.path.join(output_dir, "fondo_calculado.jpg"), fondo)
+                x_fondo, y_fondo, w_fondo, h_fondo = map(int, bbox_recorte)
+                fondo = fondo[y_fondo:y_fondo+h_fondo, x_fondo:x_fondo+w_fondo]
+            if resize_enabled:
+                fondo = cv2.resize(fondo, resize_dims)
+            os.makedirs(output_dir, exist_ok=True)
+            cv2.imwrite(os.path.join(output_dir, "fondo_calculado.jpg"), fondo_sin_recorte)
         else:
             if estado:
                 estado.emitir_error("No se pudo obtener el fondo (imagen o video).")
@@ -226,7 +221,9 @@ def procesar_videos_con_morfologia(video_fondo, videos_dir, output_dir,
 
             video_path = os.path.join(videos_dir, video)
             frames_dir = os.path.join("__frames_tmp__", Path(video).stem)
-            output_masks = os.path.join(output_dir, f"mascaras_{Path(video).stem}")
+            carpeta_video = os.path.join(output_dir, Path(video).stem)
+            os.makedirs(carpeta_video, exist_ok=True)
+            output_masks = os.path.join(carpeta_video, "mask_morfologia")
             if bbox_recorte:
                 os.makedirs(output_masks, exist_ok=True)
                 h_img, w_img = fondo.shape[:2]
