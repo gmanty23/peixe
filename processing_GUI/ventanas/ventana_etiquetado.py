@@ -775,11 +775,9 @@ class VentanaEtiquetado(QMainWindow):
                 shutil.rmtree(etiquetado_yolo_dir)
                 
             # Reproyectar coordenadas
-            labels_dir = os.path.join(salida_video, "etiquetado_yolo", "labels")
-            reproyectados_dir = os.path.join(salida_video, "etiquetado_yolo", "labels_reproyectados")
+            labels_dir = os.path.join(salida_video, "labels")
+            reproyectados_dir = os.path.join(salida_video, "labels_reproyectados")
             if os.path.exists(labels_dir):
-                estado.emitir_etapa("Reproyectando coordenadas...")
-                estado.emitir_progreso(0)
                 reproyectar_txts_yolo(labels_dir, imgsz, padding_info, recorte_margenes, reproyectados_dir, estado)
                 shutil.rmtree(labels_dir, ignore_errors=True)
                 os.rename(reproyectados_dir, labels_dir)
