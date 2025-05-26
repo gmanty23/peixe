@@ -9,8 +9,8 @@ class VentanaVisualizacion(QWidget):
     def __init__(self, parent=None):
         super().__init__()
         self.ventana_inicio = parent
-        self.ventana_resultado = None  # referencia persistente
-        self.setWindowTitle("Visualización de Etiquetado")
+        self.ventana_resultado = None
+        self.setWindowTitle("Visualización de Resultados")
         self.setMinimumSize(500, 250)
         self.setup_ui()
         self.setup_styles()
@@ -30,7 +30,7 @@ class VentanaVisualizacion(QWidget):
         selector_layout = QHBoxLayout()
         label_tipo = QLabel("Tipo de visualización:")
         self.combo_tipo = QComboBox()
-        self.combo_tipo.addItems(["Cutie", "Morfología", "YOLOv8"])
+        self.combo_tipo.addItems(["Máscaras", "BBoxes"])
         selector_layout.addWidget(label_tipo)
         selector_layout.addWidget(self.combo_tipo)
         layout.addLayout(selector_layout)
@@ -91,7 +91,7 @@ class VentanaVisualizacion(QWidget):
 
     def visualizar_resultados(self):
         carpeta = self.lineedit_carpeta.text()
-        tipo = self.combo_tipo.currentText()
+        tipo = self.combo_tipo.currentText().lower()
 
         if not carpeta or not os.path.exists(carpeta):
             QMessageBox.critical(self, "Error", "Debes seleccionar una carpeta válida")
@@ -103,12 +103,10 @@ class VentanaVisualizacion(QWidget):
             QMessageBox.critical(self, "Error", f"No se encontró el vídeo: {ruta_video}")
             return
 
-        # Si ya había una ventana abierta, la cerramos y la descartamos
         if self.ventana_resultado:
             self.ventana_resultado.close()
             self.ventana_resultado = None
 
-        # Crear nueva instancia con los valores actuales
         self.ventana_resultado = VentanaResultadoVisualizacion(
             ruta_video=ruta_video,
             carpeta_base=carpeta,

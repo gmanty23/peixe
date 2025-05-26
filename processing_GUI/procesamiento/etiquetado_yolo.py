@@ -102,77 +102,77 @@ def resize_con_padding(imagen, tamaño_objetivo, return_padding=False):
         return imagen_padded
 
 # ---------------------- Reproyección de BBoxes ----------------------
-def reproyectar_bboxes_a_original(lista_bboxes, imgsz, padding_info, recorte_margenes):
-    reproyectadas = []
+# def reproyectar_bboxes_a_original(lista_bboxes, imgsz, padding_info, recorte_margenes):
+#     reproyectadas = []
 
-    pad_top = padding_info["top"]
-    pad_left = padding_info["left"]
-    escala = padding_info["escala"]
+#     pad_top = padding_info["top"]
+#     pad_left = padding_info["left"]
+#     escala = padding_info["escala"]
 
-    margen_x = recorte_margenes["left"]
-    margen_y = recorte_margenes["top"]
+#     margen_x = recorte_margenes["left"]
+#     margen_y = recorte_margenes["top"]
 
-    for bbox in lista_bboxes:
-        clase, x_rel, y_rel, w_rel, h_rel = bbox
+#     for bbox in lista_bboxes:
+#         clase, x_rel, y_rel, w_rel, h_rel = bbox
 
-        x_c_abs = x_rel * imgsz
-        y_c_abs = y_rel * imgsz
-        w_abs = w_rel * imgsz
-        h_abs = h_rel * imgsz
+#         x_c_abs = x_rel * imgsz
+#         y_c_abs = y_rel * imgsz
+#         w_abs = w_rel * imgsz
+#         h_abs = h_rel * imgsz
 
-        x_c_sin_pad = x_c_abs - pad_left
-        y_c_sin_pad = y_c_abs - pad_top
+#         x_c_sin_pad = x_c_abs - pad_left
+#         y_c_sin_pad = y_c_abs - pad_top
 
-        x_c_orig = x_c_sin_pad / escala
-        y_c_orig = y_c_sin_pad / escala
-        w_orig = w_abs / escala
-        h_orig = h_abs / escala
+#         x_c_orig = x_c_sin_pad / escala
+#         y_c_orig = y_c_sin_pad / escala
+#         w_orig = w_abs / escala
+#         h_orig = h_abs / escala
 
-        x1 = x_c_orig - w_orig / 2 + margen_x
-        y1 = y_c_orig - h_orig / 2 + margen_y
-        x2 = x_c_orig + w_orig / 2 + margen_x
-        y2 = y_c_orig + h_orig / 2 + margen_y
+#         x1 = x_c_orig - w_orig / 2 + margen_x
+#         y1 = y_c_orig - h_orig / 2 + margen_y
+#         x2 = x_c_orig + w_orig / 2 + margen_x
+#         y2 = y_c_orig + h_orig / 2 + margen_y
 
-        reproyectadas.append([int(clase), x1, y1, x2, y2])
+#         reproyectadas.append([int(clase), x1, y1, x2, y2])
 
-    return reproyectadas
+#     return reproyectadas
 
 # ---------------------- Procesar .txt reproyectando ----------------------
-def reproyectar_txts_yolo(labels_dir, imgsz, padding_info, recorte_margenes, output_dir, estado=None):
-    os.makedirs(output_dir, exist_ok=True)
-    txt_files = [f for f in os.listdir(labels_dir) if f.endswith(".txt")]
-    total = len(txt_files)
-    if estado:
-        estado.emitir_etapa("Reproyectando coordenadas...")
-        estado.emitir_progreso(0)
-    for i,archivo in enumerate(txt_files):
-        if not archivo.endswith(".txt"):
-            continue
+# def reproyectar_txts_yolo(labels_dir, imgsz, padding_info, recorte_margenes, output_dir, estado=None):
+#     os.makedirs(output_dir, exist_ok=True)
+#     txt_files = [f for f in os.listdir(labels_dir) if f.endswith(".txt")]
+#     total = len(txt_files)
+#     if estado:
+#         estado.emitir_etapa("Reproyectando coordenadas...")
+#         estado.emitir_progreso(0)
+#     for i,archivo in enumerate(txt_files):
+#         if not archivo.endswith(".txt"):
+#             continue
 
-        ruta_txt = os.path.join(labels_dir, archivo)
-        with open(ruta_txt, "r") as f:
-            lineas = f.readlines()
+#         ruta_txt = os.path.join(labels_dir, archivo)
+#         with open(ruta_txt, "r") as f:
+#             lineas = f.readlines()
 
-        bboxes = []
-        for linea in lineas:
-            partes = linea.strip().split()
-            if len(partes) != 5:
-                continue
-            bbox = [int(partes[0])] + list(map(float, partes[1:]))
-            bboxes.append(bbox)
+#         bboxes = []
+#         for linea in lineas:
+#             partes = linea.strip().split()
+#             if len(partes) != 5:
+#                 continue
+#             bbox = [int(partes[0])] + list(map(float, partes[1:]))
+#             bboxes.append(bbox)
 
-        reproyectadas = reproyectar_bboxes_a_original(bboxes, imgsz, padding_info, recorte_margenes)
-        if estado:
-            porcentaje = int((i + 1) / total * 100)
-            estado.emitir_progreso(porcentaje)
+#         reproyectadas = reproyectar_bboxes_a_original(bboxes, imgsz, padding_info, recorte_margenes)
+#         if estado:
+#             porcentaje = int((i + 1) / total * 100)
+#             estado.emitir_progreso(porcentaje)
 
-        with open(os.path.join(output_dir, archivo), "w") as f_out:
-            for bbox in reproyectadas:
-                clase, x1, y1, x2, y2 = bbox
-                f_out.write(f"{clase} {x1:.2f} {y1:.2f} {x2:.2f} {y2:.2f}\n")
+#         with open(os.path.join(output_dir, archivo), "w") as f_out:
+#             for bbox in reproyectadas:
+#                 clase, x1, y1, x2, y2 = bbox
+#                 f_out.write(f"{clase} {x1:.2f} {y1:.2f} {x2:.2f} {y2:.2f}\n")
 
 # ---------------------- Pipeline principal ----------------------
-def procesar_yolo(video_path, output_path, resize_dim, bbox_recorte=None, estado=None):
+def procesar_yolo(video_path, output_path, resize_dim, bbox_recorte=None, estado=None, output_dims=(1920,1080)):
     try:
         estado.emitir_etapa("Preprocesando imágenes...")
         estado.emitir_progreso(0)

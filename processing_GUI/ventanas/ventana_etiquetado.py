@@ -11,7 +11,7 @@ import shutil
 import json
 from processing_GUI.procesamiento.etiquetado_morfologia import procesar_videos_con_morfologia, EstadoProceso
 import cv2
-from processing_GUI.procesamiento.etiquetado_yolo import procesar_yolo, reproyectar_txts_yolo
+from processing_GUI.procesamiento.etiquetado_yolo import procesar_yolo
 
 class WorkerThreadMorfología(QThread):
     progreso = Signal(int)
@@ -34,6 +34,7 @@ class WorkerThreadMorfología(QThread):
         self.resize_enabled = False
         self.resize_dims = (1920, 1080)
         self.bbox_recorte = bbox_recorte
+        self.output_dims = (1920, 1080)
 
     def run(self):
         estado = EstadoProceso()
@@ -56,7 +57,8 @@ class WorkerThreadMorfología(QThread):
             ruta_imagen_fondo=self.ruta_imagen_fondo,
             resize_enabled=self.resize_enabled,
             resize_dims=self.resize_dims,
-            bbox_recorte=self.bbox_recorte
+            bbox_recorte=self.bbox_recorte,
+            output_dims=self.output_dims
         )
 
 
@@ -406,10 +408,36 @@ class VentanaEtiquetado(QMainWindow):
         morphology_widget = QWidget()
         morphology_layout = QVBoxLayout(morphology_widget)
 
+        # Selección del tamaño de fondo
+        output_resize_layout = QHBoxLayout()
+        output_resize_label = QLabel("Tamaño de salida (ancho x alto):")
+        self.output_width_spinbox = QSpinBox()
+        self.output_height_spinbox = QSpinBox()
+        self.output_width_spinbox.setRange(50, 4000)
+        self.output_height_spinbox.setRange(50, 4000)
+        self.output_width_spinbox.setValue(1920)
+        self.output_height_spinbox.setValue(1080)
+        output_resize_layout.addWidget(output_resize_label)
+        output_resize_layout.addWidget(self.output_width_spinbox)
+        output_resize_layout.addWidget(QLabel("×"))
+        output_resize_layout.addWidget(self.output_height_spinbox)
+        morphology_layout.addLayout(output_resize_layout)
+
         # Seleccion de recorte
-        self.checkbox_recorte_manual = QCheckBox("Recorte manual")
-        self.checkbox_recorte_manual.setChecked(False)
-        morphology_layout.addWidget(self.checkbox_recorte_manual)
+        self.checkbox_usar_recorte = QCheckBox("Aplicar recorte")
+        self.checkbox_usar_recorte.setChecked(False)
+        morphology_layout.addWidget(self.checkbox_usar_recorte)
+
+        bbox_layout = QHBoxLayout()
+        bbox_label = QLabel("Bounding box (x, y, w, h):")
+        self.bbox_lineedit = QLineEdit()
+        self.bbox_lineedit.setPlaceholderText("Ej: 100, 200, 300, 400")
+        self.bbox_lineedit.setText("550, 960, 2257, 1186")
+        self.bbox_lineedit.setEnabled(True)
+
+        bbox_layout.addWidget(bbox_label)
+        bbox_layout.addWidget(self.bbox_lineedit)
+        morphology_layout.addLayout(bbox_layout)
 
         # Selección de núcleos
         cores_layout = QHBoxLayout()
@@ -578,24 +606,23 @@ class VentanaEtiquetado(QMainWindow):
         percentil = self.percentile_spinbox.value()
         grupo_size = self.mediana_group_size_spinbox.value()
         nucleos = self.cores_spinbox.value()
+        output_dims = (self.output_width_spinbox.value(),self.output_height_spinbox.value())
 
         bbox_recorte = None
-        if self.checkbox_recorte_manual.isChecked():
-            if usar_imagen_fondo:
-                frame = cv2.imread(fondo_manual)
-                if frame is None:
-                    QMessageBox.critical(self, "Error", "No se pudo abrir la imagen de fondo para seleccionar el recorte.")
+        if self.checkbox_usar_recorte.isChecked():
+            bbox_texto = self.bbox_lineedit.text()
+            if bbox_texto:
+                try:
+                    bbox_recorte = tuple(map(int, bbox_texto.strip().split(',')))
+                    assert len(bbox_recorte) == 4
+                except Exception:
+                    QMessageBox.critical(self, "Error", "La bounding box debe tener el formato: x, y, w, h")
                     return
             else:
-                cap = cv2.VideoCapture(video_fondo)
-                ret, frame = cap.read()
-                cap.release()
-                if not ret:
-                    QMessageBox.critical(self, "Error", "No se pudo abrir el video para seleccionar el recorte.")
-                    return
+                QMessageBox.critical(self, "Error", "Has activado recorte pero no has introducido una bounding box")
+                return
 
-            bbox_recorte = self.seleccionar_bbox(frame, "Selecciona área para RECORTE")
-            print(">>> ROI devuelta por seleccionar_bbox:", bbox_recorte)
+        print(">>> ROI devuelta por seleccionar_bbox:", bbox_recorte)
 
         pipeline_ops = []
         resize_enabled = self.resize_checkbox.isChecked()
@@ -637,6 +664,7 @@ class VentanaEtiquetado(QMainWindow):
         self.worker.ruta_imagen_fondo = fondo_manual if usar_imagen_fondo else None
         self.worker.resize_enabled = resize_enabled
         self.worker.resize_dims = resize_dims
+        self.worker.output_dims = output_dims
 
         self.worker.progreso.connect(self.barra_progreso.setValue)
         self.worker.etapa.connect(self.etiqueta_etapa.setText)
@@ -661,9 +689,34 @@ class VentanaEtiquetado(QMainWindow):
         yolo_widget = QWidget()
         yolo_layout = QVBoxLayout(yolo_widget)
 
+        # Selección del tamaño de salida
+        output_resize_layout = QHBoxLayout()
+        output_resize_label = QLabel("Tamaño de salida (ancho x alto):")
+        self.yolo_output_width_spinbox = QSpinBox()
+        self.yolo_output_height_spinbox = QSpinBox()
+        self.yolo_output_width_spinbox.setRange(50, 4000)
+        self.yolo_output_height_spinbox.setRange(50, 4000)
+        self.yolo_output_width_spinbox.setValue(1920)
+        self.yolo_output_height_spinbox.setValue(1080)
+        output_resize_layout.addWidget(output_resize_label)
+        output_resize_layout.addWidget(self.yolo_output_width_spinbox)
+        output_resize_layout.addWidget(QLabel("×"))
+        output_resize_layout.addWidget(self.yolo_output_height_spinbox)
+        yolo_layout.addLayout(output_resize_layout)
+
         # Recorte manual
-        self.yolo_checkbox_recorte = QCheckBox("Recorte manual")
-        yolo_layout.addWidget(self.yolo_checkbox_recorte)
+        self.yolo_checkbox_usar_recorte = QCheckBox("Aplicar recorte")
+        self.yolo_checkbox_usar_recorte.setChecked(False)
+        yolo_layout.addWidget(self.yolo_checkbox_usar_recorte)
+
+        yolo_bbox_layout = QHBoxLayout()
+        yolo_bbox_label = QLabel("Bounding box (x, y, w, h):")
+        self.yolo_bbox_lineedit = QLineEdit()
+        self.yolo_bbox_lineedit.setPlaceholderText("Ej: 100, 200, 300, 400")
+        self.yolo_bbox_lineedit.setText("550, 960, 2257, 1186")
+        yolo_bbox_layout.addWidget(yolo_bbox_label)
+        yolo_bbox_layout.addWidget(self.yolo_bbox_lineedit)
+        yolo_layout.addLayout(yolo_bbox_layout)
 
         # Tamaño de imagen
         resize_layout = QHBoxLayout()
@@ -696,21 +749,24 @@ class VentanaEtiquetado(QMainWindow):
             QMessageBox.critical(self, "Error", "Tamaño no válido.")
             return
 
+        output_dims = (self.yolo_output_width_spinbox.value(),self.yolo_output_height_spinbox.value())
+
         # Seleccionar recorte si procede
         bbox_recorte = None
-        if self.yolo_checkbox_recorte.isChecked():
-            video_files = [f for f in os.listdir(videos_dir) if f.endswith(('.avi', '.mp4'))]
-            if not video_files:
-                QMessageBox.critical(self, "Error", "No hay vídeos en el directorio.")
+        if self.yolo_checkbox_usar_recorte.isChecked():
+            bbox_texto = self.yolo_bbox_lineedit.text()
+            if bbox_texto:
+                try:
+                    bbox_recorte = tuple(map(int, bbox_texto.strip().split(',')))
+                    assert len(bbox_recorte) == 4
+                except Exception:
+                    QMessageBox.critical(self, "Error", "La bounding box debe tener el formato: x, y, w, h")
+                    return
+            else:
+                QMessageBox.critical(self, "Error", "Has activado recorte pero no has introducido una bounding box")
                 return
-            primer_video = os.path.join(videos_dir, video_files[0])
-            cap = cv2.VideoCapture(primer_video)
-            ret, frame = cap.read()
-            cap.release()
-            if not ret:
-                QMessageBox.critical(self, "Error", "No se pudo abrir el vídeo para recorte.")
-                return
-            bbox_recorte = self.seleccionar_bbox(frame, "Selecciona área para RECORTE")
+
+
 
         # Inicializar estado
         self.barra_progreso.setValue(0)
@@ -738,12 +794,43 @@ class VentanaEtiquetado(QMainWindow):
             ruta_video = os.path.join(videos_dir, video_file)
             carpeta_video = os.path.join(videos_dir, nombre_base)
             os.makedirs(carpeta_video, exist_ok=True)
-            salida_video = os.path.join(carpeta_video, "bbox_yolo")
+            salida_video = os.path.join(carpeta_video, "bbox")
+            os.makedirs(salida_video, exist_ok=True)
+
+            output_dims_info = {
+                "output_dims": [output_dims[0], output_dims[1]]
+            }
+            with open(os.path.join(salida_video, "output_dims.json"), "w") as f:
+                json.dump(output_dims_info, f, indent=4)
+
+            if bbox_recorte:
+                # Obtener dimensiones reales del vídeo
+                cap = cv2.VideoCapture(ruta_video)
+                ret, frame = cap.read()
+                cap.release()
+                if not ret:
+                    QMessageBox.critical(self, "Error", f"No se pudo leer el vídeo {ruta_video} para calcular tamaño.")
+                    continue
+                h_img, w_img = frame.shape[:2]
+
+                x, y, w, h = bbox_recorte
+                recorte_info = {
+                    "left": x,
+                    "top": y,
+                    "right": w_img - (x + w),
+                    "bottom": h_img - (y + h),
+                    "x": x,
+                    "y": y,
+                    "w": w,
+                    "h": h,
+                    "shape": [h_img, w_img]
+                }
+                with open(os.path.join(salida_video, "recorte_yolo.json"), "w") as f:
+                    json.dump(recorte_info, f, indent=4)
+
 
             # Preprocesado
-            imagenes_path, recorte_margenes, padding_info = procesar_yolo(
-                ruta_video, salida_video, imgsz, bbox_recorte, estado
-            )
+            imagenes_path, recorte_margenes, padding_info = procesar_yolo(ruta_video, salida_video, imgsz, bbox_recorte, estado, output_dims = output_dims)
             if imagenes_path is None:
                 continue
 
@@ -774,15 +861,57 @@ class VentanaEtiquetado(QMainWindow):
             if os.path.exists(etiquetado_yolo_dir):
                 shutil.rmtree(etiquetado_yolo_dir)
                 
-            # Reproyectar coordenadas
-            labels_dir = os.path.join(salida_video, "etiquetado_yolo", "labels")
-            reproyectados_dir = os.path.join(salida_video, "etiquetado_yolo", "labels_reproyectados")
-            if os.path.exists(labels_dir):
-                estado.emitir_etapa("Reproyectando coordenadas...")
-                estado.emitir_progreso(0)
-                reproyectar_txts_yolo(labels_dir, imgsz, padding_info, recorte_margenes, reproyectados_dir, estado)
-                shutil.rmtree(labels_dir, ignore_errors=True)
-                os.rename(reproyectados_dir, labels_dir)
+            # Normalizar coordenadas YOLO reescalando a output_dims
+            labels_dir = os.path.join(salida_video, "labels")
+            for archivo in os.listdir(labels_dir):
+                if not archivo.endswith(".txt"):
+                    continue
+                ruta_txt = os.path.join(labels_dir, archivo)
+                with open(ruta_txt, "r") as f:
+                    lineas = f.readlines()
+
+                abs_lines = []
+
+                # Calcula el tamaño real de la imagen sin padding
+                frame_w = imgsz - padding_info["left"] - padding_info["right"]
+                frame_h = imgsz - padding_info["top"] - padding_info["bottom"]
+
+                # Calcula los factores de escalado desde esa imagen directamente a output_dims
+                fx = output_dims[0] / frame_w
+                fy = output_dims[1] / frame_h
+
+                for linea in lineas:
+                    clase, x_rel, y_rel, w_rel, h_rel = map(float, linea.strip().split())
+
+                    # Coordenadas absolutas en imagen 1024×1024 (con padding)
+                    x_abs = x_rel * imgsz
+                    y_abs = y_rel * imgsz
+                    w_abs = w_rel * imgsz
+                    h_abs = h_rel * imgsz
+
+                    # Eliminar padding → imagen sin bordes negros
+                    x_abs -= padding_info["left"]
+                    y_abs -= padding_info["top"]
+
+                    # Convertir a XYXY en imagen sin padding
+                    x1 = x_abs - w_abs / 2
+                    y1 = y_abs - h_abs / 2
+                    x2 = x_abs + w_abs / 2
+                    y2 = y_abs + h_abs / 2
+
+                    # Escalar a output_dims directamente
+                    x1 *= fx
+                    x2 *= fx
+                    y1 *= fy
+                    y2 *= fy
+
+                    abs_lines.append(f"{int(clase)} {int(x1)} {int(y1)} {int(x2)} {int(y2)}")
+
+                with open(ruta_txt, "w") as f_abs:
+                    f_abs.write("\n".join(abs_lines))
+
+
+
 
             # Finalizar este vídeo
             self.barra_progreso.setRange(0, 100)

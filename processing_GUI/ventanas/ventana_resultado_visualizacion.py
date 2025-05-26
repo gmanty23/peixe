@@ -6,7 +6,8 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QPixmap, QImage
 
 from processing_GUI.procesamiento.visualizacion import (
-    cargar_mascara, cargar_bboxes_yolo, dibujar_bboxes
+    cargar_mascara, cargar_bboxes_yolo, dibujar_bboxes,
+    superponer_mascara, cargar_recorte, aplicar_recorte, cargar_output_dims
 )
 
 class VentanaResultadoVisualizacion(QMainWindow):
@@ -24,6 +25,8 @@ class VentanaResultadoVisualizacion(QMainWindow):
         self.frame_idx = 0
         self.frame_actual_leido = -1
         self.frame_cache = None
+
+        self.recorte = cargar_recorte(self.carpeta_base)
 
         self.timer = QTimer()
         self.timer.timeout.connect(self.mostrar_siguiente_frame)
@@ -94,16 +97,20 @@ class VentanaResultadoVisualizacion(QMainWindow):
 
         frame = self.frame_cache.copy()
 
-        if self.tipo_visualizacion in ["cutie", "morfología", "morfologia"]:
-            tipo_mascara = "cutie" if self.tipo_visualizacion == "cutie" else "morfologia"
-            mask = cargar_mascara(self.carpeta_base, tipo_mascara, self.frame_idx)
-            if mask is not None and mask.shape[:2] == frame.shape[:2]:
-                color = (0, 255, 0)
-                alpha = 0.5
-                overlay = frame.copy()
-                overlay[mask > 0] = (overlay[mask > 0] * (1 - alpha) + alpha * np.array(color)).astype('uint8')
-                frame = overlay
-        elif self.tipo_visualizacion == "yolov8":
+        if self.tipo_visualizacion == "máscaras":
+            mask = cargar_mascara(self.carpeta_base, self.frame_idx)
+            if mask is not None:
+                if self.recorte:
+                    frame = aplicar_recorte(frame, self.recorte)
+                    output_dims = cargar_output_dims(os.path.join(self.carpeta_base, "masks"))
+                    frame = cv2.resize(frame, output_dims, interpolation=cv2.INTER_LINEAR)
+                frame = superponer_mascara(frame, mask)
+
+        elif self.tipo_visualizacion == "bboxes":
+            if self.recorte:
+                frame = aplicar_recorte(frame, self.recorte)
+                output_dims = cargar_output_dims(os.path.join(self.carpeta_base, "bbox"))
+                frame = cv2.resize(frame, output_dims, interpolation=cv2.INTER_LINEAR)
             bboxes = cargar_bboxes_yolo(self.carpeta_base, self.frame_idx)
             frame = dibujar_bboxes(frame, bboxes)
 
