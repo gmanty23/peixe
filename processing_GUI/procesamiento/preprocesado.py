@@ -274,6 +274,11 @@ def calcular_mediana_segmento(input_path, lotes_imagenes, id_proceso, progress_q
 
                 mediana_grupo_path = os.path.join(output_path, f"mediana_grupo_{indice_lote+1}.jpg")
                 cv2.imwrite(mediana_grupo_path, mediana_grupo)
+                for nombre in lotes_imagenes:
+                    try:
+                        os.remove(os.path.join(input_path, nombre))
+                    except Exception as e:
+                        print(f"[WARNING] No se pudo eliminar {nombre}: {e}")
 
                 print(f"Proceso {id_proceso}: Mediana del grupo {indice_lote+1} calculada con éxito.")
                 progress_queue.put(1)
@@ -299,7 +304,6 @@ def reducir_medianas_jerarquicamente(medianas, max_grupo=60):
 # Función que calcula la mediana final a partir de las medianas intermedias con el objetivo de tener una aproximación del fondo estático de la imagen
 def calcular_mediana(input_path, sizeGrupo, total_imagenes, imagenes, progress_callback_especifico=None, num_procesos=None):
     try:
-        import queue  # Para manejar excepciones de timeout en la cola
 
         if num_procesos is None:
             num_procesos = multiprocessing.cpu_count() -1 

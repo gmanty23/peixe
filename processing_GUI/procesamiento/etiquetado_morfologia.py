@@ -7,6 +7,8 @@ import random
 import numpy as np
 import multiprocessing
 from pathlib import Path
+from multiprocessing import Pool
+import queue
 
 # ---------------------- Señales de estado ----------------------
 class EstadoProceso:
@@ -38,10 +40,94 @@ class EstadoProceso:
             self.on_video_progreso(index)
 
 # ---------------------- Utilidades ----------------------
-def extraer_frames(video_path, output_folder, resize_enabled=False, resize_dims=(1920, 1080), bbox_recorte=None):
+# def extraer_frames_segmento(video_path, output_folder, frame_inicial, frame_final, segment_id, resize_enabled=False, resize_dims=(1920, 1080), bbox_recorte=None, q=None, estado=None):
+#     try:
+#         print(f"[DEBUG] Procesando segmento {segment_id}: frames {frame_inicial} a {frame_final}")
+#         cap = cv2.VideoCapture(video_path)
+#         if not cap.isOpened():
+#             raise ValueError(f"No se pudo abrir el vídeo: {video_path}")
+#         cap.set(cv2.CAP_PROP_POS_FRAMES, frame_inicial)
+#         frame_count = frame_inicial
+#         total_frames = frame_final - frame_inicial + 1
+
+#         while frame_count <= frame_final:
+#             ret, frame = cap.read()
+#             if not ret:
+#                 break
+            
+#             if bbox_recorte:
+#                 x, y, w, h = map(int, bbox_recorte)
+#                 frame = frame[y:y+h, x:x+w]
+            
+#             if resize_enabled:
+#                 frame = cv2.resize(frame, resize_dims)
+
+#             frame_path = os.path.join(output_folder, f"frame_{frame_count:05d}.jpg")
+#             cv2.imwrite(frame_path, frame)
+#             frame_count += 1
+
+#             progreso = int(((frame_count - frame_inicial) / total_frames) * 100)
+#             q.put((segment_id, progreso))
+
+#         cap.release()
+#         print(f"[DEBUG] Segmento {segment_id} procesado: {frame_count - frame_inicial} frames extraídos.")
+
+        
+#     except Exception as e:
+#         print(f"[ERROR] Error al procesar segmento: {e}")
+
+
+
+# def extraer_frames(video_path, output_folder, num_procesos, resize_enabled=False, resize_dims=(1920, 1080), bbox_recorte=None, estado=None):
+#     try:
+#         os.makedirs(output_folder, exist_ok=True)
+#         cap = cv2.VideoCapture(video_path)
+#         if not cap.isOpened():
+#             raise ValueError(f"No se pudo abrir el vídeo: {video_path}")
+#             return None
+#         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+#         print(f"[DEBUG] Total de frames en el vídeo: {total_frames}")
+#         cap.release()
+
+#         q = multiprocessing.Queue()
+#         segment_size = total_frames // num_procesos
+#         procesos = []
+#         for i in range(num_procesos):
+#             frame_inicial = i * segment_size
+#             frame_final = (i + 1) * segment_size - 1 if i < num_procesos - 1 else total_frames -1
+#             p = multiprocessing.Process(
+#                 target=extraer_frames_segmento,
+#                 args=(video_path, output_folder, frame_inicial, frame_final, i, resize_enabled, resize_dims, bbox_recorte, q, estado)
+#             )
+#             procesos.append(p)
+#             p.start()
+
+#         progreso = [0] * num_procesos
+#         while any(p.is_alive() for p in procesos):
+#             while not q.empty():
+#                 segment_id, frames_procesados = q.get()
+#                 progreso[segment_id] = frames_procesados
+#                 progreso_promedio = int (sum(progreso) // num_procesos)
+#                 if estado:
+#                     estado.emitir_progreso(progreso_promedio)
+#             while not q.empty():
+#                 q.get()
+
+#         for p in procesos:
+#             p.join()
+
+#         print(f"[DEBUG] Todos los procesos han terminado.")
+#         return sorted([f for f in os.listdir(output_folder) if f.endswith('.jpg')])
+
+#     except Exception as e:
+#         print (f"[ERROR] Error al extraer frames: {e}")
+
+def extraer_frames(video_path, output_folder, resize_enabled=False, resize_dims=(1920, 1080), bbox_recorte=None, estado=None):
     os.makedirs(output_folder, exist_ok=True)
     cap = cv2.VideoCapture(video_path)
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     frame_idx = 0
+
     while True:
         ret, frame = cap.read()
         if not ret:
@@ -54,48 +140,79 @@ def extraer_frames(video_path, output_folder, resize_enabled=False, resize_dims=
         frame_path = os.path.join(output_folder, f"frame_{frame_idx:05d}.jpg")
         cv2.imwrite(frame_path, frame)
         frame_idx += 1
+
+        if estado and total_frames > 0:
+            porcentaje = int((frame_idx / total_frames) * 100)
+            estado.emitir_progreso(porcentaje)
+
     cap.release()
     return sorted([f for f in os.listdir(output_folder) if f.endswith('.jpg')])
 
-
 # ---------------------- Fondo ----------------------
-def calcular_fondo_percentil(input_path, imagenes, percentil, grupo_size, num_procesos, cache_path, estado=None):
-    def calcular_mediana_segmento(lotes, id_proc, q):
+def calcular_mediana_segmento(input_path, percentil, cache_path, lotes, id_proc, q):
+    try:
         for idx, grupo in lotes:
+            print(f"[Proceso {id_proc}] Procesando grupo {idx} con {len(grupo)} imágenes")
             imgs = [cv2.imread(os.path.join(input_path, img)) for img in grupo]
             imgs = [im for im in imgs if im is not None]
             if imgs:
                 arr = np.array(imgs)
                 fondo = np.percentile(arr, percentil, axis=0).astype(np.uint8)
+                os.makedirs(cache_path, exist_ok=True)
                 out_path = os.path.join(cache_path, f"mediana_grupo_{idx:03d}.jpg")
                 cv2.imwrite(out_path, fondo)
-                q.put(1)
+            for img in grupo:
+                try:
+                    os.remove(os.path.join(input_path, img))
+                except Exception as e:
+                    print(f"[WARNING] No se pudo eliminar {img}: {e}")
+            print(f"Eliminadas imágenes del grupo {idx} en proceso {id_proc}")
+            q.put(1)
+    except Exception as e:
+        print(f"[Proceso {id_proc}] Error al procesar grupo: {e}")
+        q.put(0)
 
+
+def calcular_fondo_percentil(input_path, imagenes, percentil, grupo_size, num_procesos, cache_path, estado=None):
     os.makedirs(cache_path, exist_ok=True)
     random.shuffle(imagenes)
     grupos = [imagenes[i:i+grupo_size] for i in range(0, len(imagenes), grupo_size)]
-    lotes_por_proc = [[] for _ in range(num_procesos)]
-    for i, grupo in enumerate(grupos):
-        lotes_por_proc[i % num_procesos].append((i, grupo))
+    
+    # Dividir los grupos en lotes para cada proceso
+    lotes_por_proceso = [[] for _ in range(num_procesos)]
+    for idx, grupo in enumerate(grupos):
+        lotes_por_proceso[idx % num_procesos].append((idx, grupo))
 
     q = multiprocessing.Queue()
-    procesos = [
-        multiprocessing.Process(target=calcular_mediana_segmento, args=(lotes_por_proc[i], i, q))
-        for i in range(num_procesos)
-    ]
-    for p in procesos: p.start()
+    procesos = []
 
+    #Lanzar procesos para calcular la mediana de cada lote
+    for i in range(num_procesos):
+        p = multiprocessing.Process(
+            target=calcular_mediana_segmento,
+            args=(input_path, percentil, cache_path, lotes_por_proceso[i], i, q)
+        )
+        procesos.append(p)
+        p.start()
+
+    # Seguimiento del progreso con proteccion por timeout
     total = len(grupos)
     progreso = 0
     while progreso < total:
-        q.get()
-        progreso += 1
-        porcentaje = int((progreso / total) * 100)
-        if estado:
-            estado.emitir_progreso(porcentaje)
+        try:
+            q.get(timeout=100)  
+            progreso += 1
+            porcentaje = int((progreso / total) * 100)
+            if estado:
+                estado.emitir_progreso(porcentaje)
+        except queue.Empty:
+            print("⚠️ Advertencia: timeout esperando progreso. Puede que un proceso haya fallado.")
+            break
 
+    # Esperar a que todos los procesos terminen
     for p in procesos: p.join()
 
+    print(f"[DEBUG] Procesos terminados, calculando fondo final...")
     medianas = [cv2.imread(os.path.join(cache_path, f))
                 for f in os.listdir(cache_path) if f.endswith(".jpg")]
     medianas = [m for m in medianas if m is not None]
@@ -104,8 +221,11 @@ def calcular_fondo_percentil(input_path, imagenes, percentil, grupo_size, num_pr
             np.percentile(np.array(medianas[i:i+grupo_size]), percentil, axis=0).astype(np.uint8)
             for i in range(0, len(medianas), grupo_size)
         ]
-    fondo_final = medianas[0]
+    print(f"[DEBUG] Número de medianas calculadas: {len(medianas)}")
+    fondo_final = np.percentile(np.array(medianas), percentil, axis=0).astype(np.uint8)
+    print(f"[DEBUG] Fondo final calculado")
     shutil.rmtree(cache_path)
+    shutil.rmtree(input_path, ignore_errors=True)
     return fondo_final
 
 # ---------------------- Procesado ----------------------
@@ -115,12 +235,16 @@ def aplicar_pipeline_morfologica(mask, pipeline):
         kx, ky = paso["kernel"]
         kernel = np.ones((kx, ky), np.uint8)
         if op == "apertura":
+            print(f"[DEBUG] Aplicando apertura con kernel {kernel.shape}")
             mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
         elif op == "cierre":
+            print(f"[DEBUG] Aplicando cierre con kernel {kernel.shape}")
             mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
         elif op == "dilatacion":
+            print(f"[DEBUG] Aplicando dilatación con kernel {kernel.shape}")
             mask = cv2.dilate(mask, kernel)
         elif op == "erosion":
+            print(f"[DEBUG] Aplicando erosión con kernel {kernel.shape}")
             mask = cv2.erode(mask, kernel)
     return mask
 
@@ -158,6 +282,7 @@ def procesar_segmento(imagenes, input_path, output_path, fondo, pipeline, q , ou
             # Resto del pipeline
             mask = aplicar_pipeline_morfologica(mask, pipeline_proc)
 
+            print(f"[Segmento] Procesando máscara para {img_name} en proceso PID {os.getpid()}: resize")
             mask = cv2.resize(mask, output_dims, interpolation=cv2.INTER_NEAREST)
 
             
@@ -191,28 +316,40 @@ def procesar_videos_con_morfologia(video_fondo, videos_dir, output_dir,
                 if estado:
                     estado.emitir_error("No se pudo leer la imagen de fondo proporcionada.")
                 return
+            if resize_enabled:
+                print(f"[DEBUG] Redimensionando fondo a {resize_dims}")
+                fondo = cv2.resize(fondo, resize_dims)
             # Redimensionar el fondo si no coincide con el tamaño del vídeo
-            alto_fondo, ancho_fondo = fondo.shape[:2]
-            if (alto_fondo, ancho_fondo) != (alto_og, ancho_og):
-                print(f"[DEBUG] Redimensionando fondo de ({ancho_fondo}, {alto_fondo}) a ({ancho_og}, {alto_og})")
-                fondo = cv2.resize(fondo, (ancho_og, alto_og))
-            if bbox_recorte:
-                h_img, w_img = fondo.shape[:2]
-                x, y, w, h = map(int, bbox_recorte)
-                fondo = fondo[y:y+h, x:x+w]
+            # alto_fondo, ancho_fondo = fondo.shape[:2]
+            # if (alto_fondo, ancho_fondo) != (alto_og, ancho_og):
+            #     print(f"[DEBUG] Redimensionando fondo de ({ancho_fondo}, {alto_fondo}) a ({ancho_og}, {alto_og})")
+            #     fondo = cv2.resize(fondo, (ancho_og, alto_og))
+            # if bbox_recorte:
+            #     h_img, w_img = fondo.shape[:2]
+            #     x, y, w, h = map(int, bbox_recorte)
+            #     fondo = fondo[y:y+h, x:x+w]
         else:
             if estado:
                 estado.emitir_etapa("Calculando fondo...")
                 estado.emitir_progreso(0)
 
-            fondo_frames_dir = "__frames_fondo_tmp__"
-            fondo_imagenes = extraer_frames(video_fondo, fondo_frames_dir, resize_enabled, resize_dims, bbox_recorte)
+            fondo_frames_dir = "processing_GUI/procesamiento/cache/__frames_fondo_tmp__"
+            os.makedirs(fondo_frames_dir, exist_ok=True)
+            print(f"[DEBUG] Extrayendo frames del vídeo de fondo: {video_fondo}")
+            if estado:
+                estado.emitir_etapa("Extrayendo frames del vídeo de fondo...")
+                estado.emitir_progreso(0)
+            fondo_imagenes = extraer_frames(video_fondo, fondo_frames_dir, resize_enabled, resize_dims, bbox_recorte, estado)
+            print(f"[DEBUG] Número de imágenes extraídas del fondo: {len(fondo_imagenes)}")
+            print(f"[DEBUG] Calculando fondo usando percentil {percentil} con grupo size {grupo_size} y {nucleos} núcleos")
+            if estado:
+                estado.emitir_etapa("Calculando fondo usando percentil...")
+                estado.emitir_progreso(0)
             fondo = calcular_fondo_percentil(
                 fondo_frames_dir, fondo_imagenes,
                 percentil, grupo_size, nucleos,
-                "__cache_fondo__", estado
+                "processing_GUI/procesamiento/cache/__cache_fondo__", estado
             )
-            shutil.rmtree(fondo_frames_dir)
 
         if fondo is not None:
             print(f"[DEBUG] Fondo shape antes del recorte: {fondo.shape}")
@@ -239,7 +376,7 @@ def procesar_videos_con_morfologia(video_fondo, videos_dir, output_dir,
                 estado.emitir_video_progreso(i)
 
             video_path = os.path.join(videos_dir, video)
-            frames_dir = os.path.join("__frames_tmp__", Path(video).stem)
+            frames_dir = os.path.join("processing_GUI/procesamiento/cache/__frames_tmp__", Path(video).stem)
             carpeta_video = os.path.join(output_dir, Path(video).stem)
             os.makedirs(carpeta_video, exist_ok=True)
             output_masks = os.path.join(carpeta_video, "masks")

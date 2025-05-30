@@ -3,7 +3,8 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from processing_GUI.ventanas.ventana_preprocesado import VentanaPreprocesado  
 from processing_GUI.ventanas.ventana_etiquetado import VentanaEtiquetado
-from processing_GUI.ventanas.ventana_visualizacion import VentanaVisualizacion  # Añadir esta línea
+from processing_GUI.ventanas.ventana_visualizacion import VentanaVisualizacion  
+from processing_GUI.ventanas.ventana_postprocesado import VentanaPostprocesado
 
 
 class VentanaInicio(QWidget):
@@ -87,21 +88,23 @@ class VentanaInicio(QWidget):
     def preprocesado(self):
         self.ventana_preprocesado = VentanaPreprocesado(parent=self)
         self.ventana_preprocesado.show()
-        self.hide()
+        #self.hide()
         
     def postprocesado(self):
-        print("Postprocesado")
-        # A implementar
+        self.ventana_postprocesado = VentanaPostprocesado(parent=self)
+        self.ventana_postprocesado.show()
+        #self.hide()
+        
     
     def etiquetado(self):
         self.ventana_etiquetado = VentanaEtiquetado(parent=self)
         self.ventana_etiquetado.show()
-        self.hide()
+        #self.hide()
     
     def visualizacion(self):
         self.ventana_visualizacion = VentanaVisualizacion(parent=self)
         self.ventana_visualizacion.show()
-        self.hide()
+        #self.hide()
 
 
 
