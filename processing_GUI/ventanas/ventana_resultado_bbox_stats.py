@@ -13,7 +13,7 @@ import math
 class VentanaResultadoBBoxStats(QWidget):
     def __init__(self, ruta_video, carpeta_base, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Área media de blobs por frame")
+        self.setWindowTitle("Estadísticos desde BBoxes")
         self.setMinimumSize(900, 600)
 
         self.ruta_video = ruta_video
@@ -26,7 +26,7 @@ class VentanaResultadoBBoxStats(QWidget):
     def setup_ui(self):
         self.layout = QVBoxLayout(self)
 
-        self.label_titulo = QLabel("Área media ± desviación típica por frame")
+        self.label_titulo = QLabel("Estadísticos calculados desde BBoxes")
         self.label_titulo.setStyleSheet("font-size: 18px; font-weight: bold;")
         self.layout.addWidget(self.label_titulo)
 
@@ -57,7 +57,9 @@ class VentanaResultadoBBoxStats(QWidget):
             ("Entropía espacial", "entropia.json", "entropia", None),
             ("Índice de exploración", "exploracion.json", "por_ventana", None),
             ("Distancia al centroide grupal", "distancia_centroide_grupal.json", "media", "std"),
-            ("Densidad local", "densidad_local.json", "densidad_media", "std")
+            ("Densidad local", "densidad_local.json", "densidad_media", "std"),
+            ("Velocidad del centroide", "velocidad_centroide.json", "velocidad", None),
+            ("Dirección del centroide", "velocidad_centroide.json", None, None),
 
         ]
 
@@ -85,7 +87,25 @@ class VentanaResultadoBBoxStats(QWidget):
 
         for idx, (titulo, archivo, dic, clave_y, clave_std) in enumerate(existentes):
             print(f"[DEBUG] Cargando: {archivo}")
-            ax = fig.add_subplot(filas, columnas, idx + 1)
+            # Si es el rose plot
+            if archivo == "velocidad_centroide.json" and clave_y is None:
+                ax = fig.add_subplot(filas, columnas, idx + 1, polar=True)
+                bins = [entry.get("bin") for entry in dic.values() if entry.get("bin") is not None]
+                n_bins = 12
+                counts = np.bincount(bins, minlength=n_bins)
+
+                theta = np.linspace(0.0, 2 * np.pi, n_bins, endpoint=False)
+                width = 2 * np.pi / n_bins
+
+                ax.bar(theta, counts, width=width, bottom=0.0, align='center',
+                    alpha=0.7, color='blue', edgecolor='black')
+                ax.set_theta_zero_location("N")
+                ax.set_theta_direction(-1)
+                ax.set_title(titulo)
+                continue
+            else:
+                ax = fig.add_subplot(filas, columnas, idx + 1)
+
             if archivo == "exploracion.json":
                 print(f"[DEBUG] Procesando exploración: {titulo}")
                 y_dict = dic.get("por_ventana", {})

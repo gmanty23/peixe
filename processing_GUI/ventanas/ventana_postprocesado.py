@@ -6,6 +6,7 @@ import os
 import json
 from processing_GUI.procesamiento.postprocesado import EstadoProceso, procesar_bbox_stats, procesar_mask_stats
 
+
 class VentanaPostprocesado(QWidget):
     def __init__(self, parent=None):
         super().__init__()
@@ -67,6 +68,7 @@ class VentanaPostprocesado(QWidget):
         self.chk_exploracion = QCheckBox("Índice de exploración")
         self.chk_dist_centroide_global = QCheckBox("Distancia al centroide global")
         self.chk_densidad_local = QCheckBox("Densidad local")
+        self.chk_vel_centroide_global = QCheckBox("Velocidad y ángulo del centroide global")
         layout_bbox.addWidget(self.chk_distribucion)
         layout_bbox.addWidget(self.chk_area)
         layout_bbox.addWidget(self.chk_distancia)
@@ -75,6 +77,7 @@ class VentanaPostprocesado(QWidget):
         layout_bbox.addWidget(self.chk_exploracion)
         layout_bbox.addWidget(self.chk_dist_centroide_global)
         layout_bbox.addWidget(self.chk_densidad_local)
+        layout_bbox.addWidget(self.chk_vel_centroide_global)
         self.group_bbox.setLayout(layout_bbox)
         scroll_layout.addWidget(self.group_bbox)
 
@@ -84,19 +87,17 @@ class VentanaPostprocesado(QWidget):
         self.chk_densidad = QCheckBox("Histograma de densidad")
         self.chk_centro_masa = QCheckBox("Centro de masa del grupo")
         self.chk_varianza = QCheckBox("Varianza espacial")
-        self.chk_vel_grupo = QCheckBox("Velocidad del grupo")
-        self.chk_compact = QCheckBox("Compactidad del grupo")
-        self.chk_autocorrelacion = QCheckBox("Autocorrelación espacial")
-        self.chk_persistencia_mask = QCheckBox("Persistencia en zona (a partir de máscaras)")
-        self.chk_tiempo_en_zona = QCheckBox("Tiempo en zona de interés")
+        self.chk_vel_grupo = QCheckBox("Velocidad y ángulo del grupo")
+        self.chk_persistencia_mask = QCheckBox("Persistencia en zona ")
+        self.chk_dispersion_temp = QCheckBox("Dispersión temporal")
+        self.chk_entropia_binaria = QCheckBox("Entropía binaria")
         layout_mask.addWidget(self.chk_densidad)
         layout_mask.addWidget(self.chk_centro_masa)
         layout_mask.addWidget(self.chk_varianza)
         layout_mask.addWidget(self.chk_vel_grupo)
-        layout_mask.addWidget(self.chk_compact)
-        layout_mask.addWidget(self.chk_autocorrelacion)
         layout_mask.addWidget(self.chk_persistencia_mask)
-        layout_mask.addWidget(self.chk_tiempo_en_zona)
+        layout_mask.addWidget(self.chk_dispersion_temp)
+        layout_mask.addWidget(self.chk_entropia_binaria)
         self.group_mask.setLayout(layout_mask)
         scroll_layout.addWidget(self.group_mask)
 
@@ -207,14 +208,29 @@ class VentanaPostprocesado(QWidget):
             estadisticos_bbox.append("distancia_centroide_global")
         if self.chk_densidad_local.isChecked():
             estadisticos_bbox.append("densidad_local")
+        if self.chk_vel_centroide_global.isChecked():
+            estadisticos_bbox.append("velocidad_centroide")
+        
         #aqui los demas estadísticos de BBoxes
 
         estadisticos_mask = []
         if self.chk_densidad.isChecked():
             estadisticos_mask.append("histograma_densidad")
+        if self.chk_centro_masa.isChecked():
+            estadisticos_mask.append("centro_masa_grupo")
+        if self.chk_varianza.isChecked():
+            estadisticos_mask.append("varianza_espacial")
+        if self.chk_vel_grupo.isChecked():
+            estadisticos_mask.append("velocidad_grupo")
+        if self.chk_persistencia_mask.isChecked():
+            estadisticos_mask.append("persistencia_zona")
+        if self.chk_dispersion_temp.isChecked():
+            estadisticos_mask.append("dispersion_temporal")
+        if self.chk_entropia_binaria.isChecked():
+            estadisticos_mask.append("entropia_binaria")
         #aqui los demas estadísticos de máscaras
 
-        if not estadisticos_bbox:
+        if not estadisticos_bbox and not estadisticos_mask:
             QMessageBox.warning(self, "Aviso", "Debes seleccionar al menos un estadístico para continuar.")
             return
 
@@ -247,6 +263,7 @@ class VentanaPostprocesado(QWidget):
         self.barra_progreso_etapas.setValue(0)
         self.barra_progreso_especifica.setValue(0)
 
+        print(f"Procesando BBoxes con los siguientes estadísticos: {estadisticos_bbox}")
         procesar_bbox_stats(
             carpeta_trabajo=carpeta,
             estadisticos_seleccionados=estadisticos_bbox,
@@ -254,7 +271,7 @@ class VentanaPostprocesado(QWidget):
             dimensiones_entrada=dimensiones_entrada,
             estado=estado
         )
-
+        print(f"Procesando Máscaras con los siguientes estadísticos: {estadisticos_mask}")
         procesar_mask_stats(
             carpeta_trabajo=carpeta,
             estadisticos_seleccionados=estadisticos_mask,

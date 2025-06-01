@@ -5,6 +5,7 @@ from pathlib import Path
 import traceback
 import numpy as np
 import cv2
+from scipy.signal import correlate2d
 
 # ---------------------- EstadoProceso ----------------------
 class EstadoProceso:
@@ -526,6 +527,64 @@ def calcular_densidad_local(ruta_centroides_json, ruta_labels, salida_path, esta
     except Exception as e:
         estado.emitir_error(f"Error en calcular_densidad_local: {str(e)}")
 
+# ---------------------- Estadístico Bbox: Velocidad centroide global y ángulo ----------------------
+def calcular_velocidad_centroide(ruta_centroide_json, salida_path, estado, n_bins=12):
+    try:
+        if not os.path.exists(ruta_centroide_json):
+            estado.emitir_etapa("No se encontró 'centroide_grupal.json'.")
+            return
+
+        with open(ruta_centroide_json, "r") as f:
+            centros = json.load(f)
+
+        frame_keys = sorted(centros.keys())
+        if len(frame_keys) < 2:
+            estado.emitir_etapa("No hay suficientes frames para calcular velocidad.")
+            return
+
+        resultado_por_frame = {}
+
+        for i in range(1, len(frame_keys)):
+            prev = centros[frame_keys[i - 1]]
+            curr = centros[frame_keys[i]]
+
+            if prev is None or curr is None or None in prev or None in curr:
+                resultado_por_frame[frame_keys[i - 1]] = {
+                    "velocidad": 0.0,
+                    "dx": 0.0,
+                    "dy": 0.0,
+                    "angulo": None,
+                    "bin": None
+                }
+                continue
+
+            x1, y1 = prev
+            x2, y2 = curr
+            dx = x2 - x1
+            dy = y2 - y1
+            velocidad = float(np.sqrt(dx**2 + dy**2))
+
+            angle_rad = np.arctan2(dy, dx)
+            angle_deg = (np.degrees(angle_rad) + 360) % 360
+            bin_id = int(angle_deg // (360 / n_bins))
+
+            resultado_por_frame[frame_keys[i - 1]] = {
+                "velocidad": velocidad,
+                "dx": dx,
+                "dy": dy,
+                "angulo": angle_deg,
+                "bin": bin_id
+            }
+
+            if i % 25 == 0:
+                porcentaje = int((i / len(frame_keys)) * 100)
+                estado.emitir_progreso(porcentaje)
+
+        with open(salida_path, "w") as f_out:
+            json.dump(resultado_por_frame, f_out, indent=2)
+
+    except Exception as e:
+        estado.emitir_error(f"Error en calcular_velocidad_centroide: {str(e)}")
 
 
 
@@ -536,8 +595,44 @@ def calcular_densidad_local(ruta_centroides_json, ruta_labels, salida_path, esta
 
 
 # ---------------------- Estadístico Máscaras: Histograma de Densidad ----------------------
+def procesar_grid_worker(grid_size, archivos, ruta_masks, ancho, alto):
+    filas, columnas = grid_size, grid_size
+    resultado_por_frame = {}
+
+    for nombre_archivo in archivos:
+        ruta = os.path.join(ruta_masks, nombre_archivo)
+        mask = cv2.imread(ruta, cv2.IMREAD_GRAYSCALE)
+        if mask is None:
+            continue
+
+        h, w = mask.shape[:2]
+        if (w, h) != (ancho, alto):
+            mask = cv2.resize(mask, (ancho, alto), interpolation=cv2.INTER_NEAREST)
+
+        frame_key = Path(nombre_archivo).stem
+        celda_h = alto // filas
+        celda_w = ancho // columnas
+        grid = [[0.0 for _ in range(columnas)] for _ in range(filas)]
+
+        for i in range(filas):
+            for j in range(columnas):
+                y1 = i * celda_h
+                x1 = j * celda_w
+                y2 = alto if i == filas - 1 else (i + 1) * celda_h
+                x2 = ancho if j == columnas - 1 else (j + 1) * celda_w
+                sub_mask = mask[y1:y2, x1:x2]
+
+                total_pixeles = sub_mask.shape[0] * sub_mask.shape[1]
+                ocupados = np.count_nonzero(sub_mask)
+                porcentaje = ocupados / total_pixeles if total_pixeles > 0 else 0.0
+
+                grid[i][j] = round(porcentaje, 4)
+
+        resultado_por_frame[frame_key] = grid
+
+    return (grid_size, resultado_por_frame)
+
 def calcular_histograma_densidad(ruta_masks, salida_dir, dimensiones_entrada, estado, tamanos_grid=[5, 10, 15, 20], num_procesos=4):
-    import cv2
     try:
         archivos = sorted([f for f in os.listdir(ruta_masks) if f.endswith(('.png', '.jpg'))])
         total_frames = len(archivos)
@@ -547,8 +642,11 @@ def calcular_histograma_densidad(ruta_masks, salida_dir, dimensiones_entrada, es
 
         ancho, alto = dimensiones_entrada
 
-        with multiprocessing.Pool(processes=num_procesos) as pool:
-            resultados = pool.map(procesar_grid, tamanos_grid, archivos, ruta_masks, ancho, alto, estado, total_frames)
+        tareas = [(g, archivos, ruta_masks, ancho, alto) for g in tamanos_grid]
+
+        from multiprocessing import Pool
+        with Pool(processes=num_procesos) as pool:
+            resultados = pool.starmap(procesar_grid_worker, tareas)
 
         for grid_size, resultado in resultados:
             nombre_archivo = f"densidad_{grid_size}.json"
@@ -564,40 +662,427 @@ def calcular_histograma_densidad(ruta_masks, salida_dir, dimensiones_entrada, es
     except Exception as e:
         estado.emitir_error(f"Error en calcular_histograma_densidad: {str(e)}")
 
-def procesar_grid(grid_size, archivos, ruta_masks, ancho, alto, estado, total_frames=None):
-            filas, columnas = grid_size, grid_size
-            resultado_por_frame = {}
+# ---------------------- Estadístico Máscaras: Centro de masa global ----------------------
+def calcular_centro_masa_mascaras(ruta_masks, salida_path, dimensiones_entrada, estado):
+    try:
+        archivos = sorted([f for f in os.listdir(ruta_masks) if f.endswith(('.png', '.jpg'))])
+        total_frames = len(archivos)
+        if total_frames == 0:
+            estado.emitir_etapa("[Aviso] No se encontraron máscaras.")
+            return
 
-            for idx, nombre_archivo in enumerate(archivos):
-                ruta = os.path.join(ruta_masks, nombre_archivo)
-                mask = cv2.imread(ruta, cv2.IMREAD_GRAYSCALE)
-                if mask is None:
-                    continue
+        ancho, alto = dimensiones_entrada
+        resultado_por_frame = {}
 
-                h, w = mask.shape[:2]
-                if (w, h) != (ancho, alto):
-                    mask = cv2.resize(mask, (ancho, alto), interpolation=cv2.INTER_NEAREST)
+        for idx, nombre_archivo in enumerate(archivos):
+            ruta = os.path.join(ruta_masks, nombre_archivo)
+            mask = cv2.imread(ruta, cv2.IMREAD_GRAYSCALE)
+            if mask is None:
+                continue
 
-                frame_key = Path(nombre_archivo).stem
-                celda_h = alto // filas
-                celda_w = ancho // columnas
-                grid = [[0 for _ in range(columnas)] for _ in range(filas)]
+            h, w = mask.shape[:2]
+            if (w, h) != (ancho, alto):
+                mask = cv2.resize(mask, (ancho, alto), interpolation=cv2.INTER_NEAREST)
 
-                for i in range(filas):
-                    for j in range(columnas):
-                        y1 = i * celda_h
-                        x1 = j * celda_w
-                        y2 = alto if i == filas - 1 else (i + 1) * celda_h
-                        x2 = ancho if j == columnas - 1 else (j + 1) * celda_w
-                        sub_mask = mask[y1:y2, x1:x2]
-                        grid[i][j] = int(np.count_nonzero(sub_mask))
+            ys, xs = np.nonzero(mask)
+            frame_key = Path(nombre_archivo).stem
 
-                resultado_por_frame[frame_key] = grid
+            if len(xs) == 0:
+                centro = [None, None]
+            else:
+                x_cm = float(np.mean(xs))
+                y_cm = float(np.mean(ys))
+                centro = [x_cm, y_cm]
 
-                if idx % 20 == 0:
-                    estado.emitir_progreso(int((idx / total_frames) * 100))
+            resultado_por_frame[frame_key] = centro
 
-            return grid_size, resultado_por_frame
+            if idx % 25 == 0:
+                porcentaje = int((idx / total_frames) * 100)
+                estado.emitir_progreso(porcentaje)
+
+        with open(salida_path, "w") as f_out:
+            json.dump(resultado_por_frame, f_out, indent=2)
+
+    except Exception as e:
+        estado.emitir_error(f"Error en calcular_centro_masa_mascaras: {str(e)}")
+
+# ---------------------- Estadístico Máscaras: Varianza Espacial ----------------------
+def calcular_varianza_espacial(ruta_masks, salida_path, dimensiones_entrada, estado):
+    try:
+        archivos = sorted([f for f in os.listdir(ruta_masks) if f.endswith(('.png', '.jpg'))])
+        total_frames = len(archivos)
+        if total_frames == 0:
+            estado.emitir_etapa("[Aviso] No se encontraron máscaras.")
+            return
+
+        ancho, alto = dimensiones_entrada
+        resultado_por_frame = {}
+
+        for idx, nombre_archivo in enumerate(archivos):
+            ruta = os.path.join(ruta_masks, nombre_archivo)
+            mask = cv2.imread(ruta, cv2.IMREAD_GRAYSCALE)
+            if mask is None:
+                continue
+
+            h, w = mask.shape[:2]
+            if (w, h) != (ancho, alto):
+                mask = cv2.resize(mask, (ancho, alto), interpolation=cv2.INTER_NEAREST)
+
+            ys, xs = np.nonzero(mask)
+            frame_key = Path(nombre_archivo).stem
+
+            if len(xs) == 0:
+                resultado_por_frame[frame_key] = {
+                    "varianza": 0.0,
+                    "std": 0.0,
+                    "n_pixeles": 0
+                }
+            else:
+                coords = np.stack((xs, ys), axis=1).astype(np.float32)  # (N, 2)
+                centro = np.mean(coords, axis=0)
+                dists_sq = np.sum((coords - centro)**2, axis=1)
+                varianza = float(np.mean(dists_sq))
+                std = float(np.sqrt(varianza))
+
+                resultado_por_frame[frame_key] = {
+                    "varianza": varianza,
+                    "std": std,
+                    "n_pixeles": int(len(xs))
+                }
+
+            if idx % 25 == 0:
+                porcentaje = int((idx / total_frames) * 100)
+                estado.emitir_progreso(porcentaje)
+
+        with open(salida_path, "w") as f_out:
+            json.dump(resultado_por_frame, f_out, indent=2)
+
+    except Exception as e:
+        estado.emitir_error(f"Error en calcular_varianza_espacial: {str(e)}")
+
+# ---------------------- Estadístico Máscaras: Velocidad Grupo ----------------------
+def calcular_velocidad_grupo(ruta_masks, salida_path, dimensiones_entrada, estado):
+    try:
+        archivos = sorted([f for f in os.listdir(ruta_masks) if f.endswith(('.png', '.jpg'))])
+        total_frames = len(archivos)
+        if total_frames < 2:
+            estado.emitir_etapa("[Aviso] Se necesitan al menos 2 frames para calcular velocidad.")
+            return
+
+        ancho, alto = dimensiones_entrada
+        resultado_por_frame = {}
+
+        n_bins = 12  # sectores angulares
+
+        for idx in range(1, total_frames):
+            nombre_anterior = archivos[idx - 1]
+            nombre_actual = archivos[idx]
+
+            ruta_anterior = os.path.join(ruta_masks, nombre_anterior)
+            ruta_actual = os.path.join(ruta_masks, nombre_actual)
+
+            mask_prev = cv2.imread(ruta_anterior, cv2.IMREAD_GRAYSCALE)
+            mask_now = cv2.imread(ruta_actual, cv2.IMREAD_GRAYSCALE)
+
+            if mask_prev is None or mask_now is None:
+                continue
+
+            h, w = mask_prev.shape[:2]
+            if (w, h) != (ancho, alto):
+                mask_prev = cv2.resize(mask_prev, (ancho, alto), interpolation=cv2.INTER_NEAREST)
+                mask_now = cv2.resize(mask_now, (ancho, alto), interpolation=cv2.INTER_NEAREST)
+
+            ys_prev, xs_prev = np.nonzero(mask_prev)
+            ys_now, xs_now = np.nonzero(mask_now)
+
+            frame_key = Path(nombre_anterior).stem
+
+            if len(xs_prev) == 0 or len(xs_now) == 0:
+                resultado_por_frame[frame_key] = {
+                    "velocidad": 0.0,
+                    "dx": 0.0,
+                    "dy": 0.0,
+                    "angulo": None,
+                    "bin": None
+                }
+                continue
+
+            x_prev = np.mean(xs_prev)
+            y_prev = np.mean(ys_prev)
+            x_now = np.mean(xs_now)
+            y_now = np.mean(ys_now)
+
+            dx = x_now - x_prev
+            dy = y_now - y_prev
+            velocidad = float(np.sqrt(dx**2 + dy**2))
+
+            angle_rad = np.arctan2(dy, dx)
+            angle_deg = (np.degrees(angle_rad) + 360) % 360
+            bin_id = int(angle_deg // (360 / n_bins))
+
+            resultado_por_frame[frame_key] = {
+                "velocidad": velocidad,
+                "dx": dx,
+                "dy": dy,
+                "angulo": angle_deg,
+                "bin": bin_id
+            }
+
+            if idx % 25 == 0:
+                porcentaje = int((idx / total_frames) * 100)
+                estado.emitir_progreso(porcentaje)
+
+        with open(salida_path, "w") as f_out:
+            json.dump(resultado_por_frame, f_out, indent=2)
+
+    except Exception as e:
+        estado.emitir_error(f"Error en calcular_velocidad_grupo: {str(e)}")
+
+# ---------------------- Estadístico Máscaras: Persistencia Espacial ----------------------
+def worker_persistencia(args):
+    ventana_id, archivos, ruta_masks, ancho, alto, grid_size = args
+    filas = columnas = grid_size
+    celda_h = alto // filas
+    celda_w = ancho // columnas
+
+    # Matriz para llevar la cuenta de persistencia por celda
+    rachas = [[[] for _ in range(columnas)] for _ in range(filas)]
+    activos = [[0 for _ in range(columnas)] for _ in range(filas)]
+
+    for nombre_archivo in archivos:
+        ruta = os.path.join(ruta_masks, nombre_archivo)
+        mask = cv2.imread(ruta, cv2.IMREAD_GRAYSCALE)
+        if mask is None:
+            continue
+
+        mask = cv2.resize(mask, (ancho, alto), interpolation=cv2.INTER_NEAREST)
+        binaria = (mask > 0).astype(np.uint8)
+
+        for i in range(filas):
+            for j in range(columnas):
+                y1, y2 = i * celda_h, alto if i == filas - 1 else (i + 1) * celda_h
+                x1, x2 = j * celda_w, ancho if j == columnas - 1 else (j + 1) * celda_w
+                sub_mask = binaria[y1:y2, x1:x2]
+                activa = int(np.any(sub_mask))
+                if activa:
+                    activos[i][j] += 1
+                else:
+                    if activos[i][j] > 0:
+                        rachas[i][j].append(activos[i][j])
+                        activos[i][j] = 0
+
+    # Cierre de rachas al final
+    for i in range(filas):
+        for j in range(columnas):
+            if activos[i][j] > 0:
+                rachas[i][j].append(activos[i][j])
+
+    persistencia_por_celda = {}
+    medias = []
+
+    for i in range(filas):
+        for j in range(columnas):
+            valores = rachas[i][j]
+            if valores:
+                media = float(np.mean(valores))
+                maximo = int(np.max(valores))
+                persistencia_por_celda[f"{i}_{j}"] = {"media": round(media, 2), "max": maximo}
+                medias.append(media)
+
+    if medias:
+        media_global = round(np.mean(medias), 3)
+        std_global = round(np.std(medias), 3)
+    else:
+        media_global = 0.0
+        std_global = 0.0
+
+    return ventana_id, {
+        "por_celda": persistencia_por_celda,
+        "media_global": media_global,
+        "std_global": std_global
+    }
+
+
+def calcular_persistencia_espacial_por_ventana(ruta_masks, salida_dir, dimensiones_entrada, estado,
+                                               tamanos_ventana=[64, 128, 256, 512], grid_size=20, num_procesos=4):
+    try:
+        archivos = sorted([f for f in os.listdir(ruta_masks) if f.endswith(('.png', '.jpg'))])
+        total_frames = len(archivos)
+        if total_frames == 0:
+            estado.emitir_etapa("[Aviso] No se encontraron máscaras.")
+            return
+
+        ancho, alto = dimensiones_entrada
+
+        for ventana in tamanos_ventana:
+            estado.emitir_etapa(f"Procesando persistencia con ventana de {ventana} frames")
+            tareas = []
+            for i in range(0, total_frames, ventana):
+                window_archivos = archivos[i:i+ventana]
+                nombre = f"ventana_{i:05d}"
+                tareas.append((nombre, window_archivos, ruta_masks, ancho, alto, grid_size))
+
+            resultados = {}
+            with multiprocessing.Pool(processes=num_procesos) as pool:
+                for idx, resultado in enumerate(pool.imap(worker_persistencia, tareas)):
+                    ventana_id, datos = resultado
+                    resultados[ventana_id] = datos
+                    porcentaje = int((idx / len(tareas)) * 100)
+                    estado.emitir_progreso(porcentaje)
+
+            nombre_archivo = f"persistencia_{ventana}.json"
+            ruta_out = os.path.join(salida_dir, nombre_archivo)
+            with open(ruta_out, "w") as f_out:
+                json.dump(resultados, f_out, indent=2)
+
+    except Exception as e:
+        estado.emitir_error(f"Error en calcular_persistencia_espacial_por_ventana: {str(e)}")
+
+
+# ---------------------- Estadístico Máscara: Dispersión temporal ----------------------
+def worker_dispersion(args):
+    ventana_id, archivos, ruta_masks, ancho, alto, grid_size = args
+    filas = columnas = grid_size
+    celda_h = alto // filas
+    celda_w = ancho // columnas
+
+    celdas_ocupadas = np.zeros((filas, columnas), dtype=np.uint8)
+
+    for nombre_archivo in archivos:
+        ruta = os.path.join(ruta_masks, nombre_archivo)
+        mask = cv2.imread(ruta, cv2.IMREAD_GRAYSCALE)
+        if mask is None:
+            continue
+
+        mask = cv2.resize(mask, (ancho, alto), interpolation=cv2.INTER_NEAREST)
+        binaria = (mask > 0).astype(np.uint8)
+
+        for i in range(filas):
+            for j in range(columnas):
+                y1, y2 = i * celda_h, alto if i == filas - 1 else (i + 1) * celda_h
+                x1, x2 = j * celda_w, ancho if j == columnas - 1 else (j + 1) * celda_w
+                sub = binaria[y1:y2, x1:x2]
+                if np.any(sub):
+                    celdas_ocupadas[i, j] = 1
+
+    total_activas = int(celdas_ocupadas.sum())
+    total_posibles = filas * columnas
+    porcentaje = round(total_activas / total_posibles, 3)
+
+    return ventana_id, {
+        "celdas_activas": total_activas,
+        "porcentaje": porcentaje
+    }
+
+
+def calcular_dispersion_temporal_por_ventana(ruta_masks, salida_dir, dimensiones_entrada, estado,
+                                             tamanos_ventana=[64, 128, 256, 512], grid_size=10, num_procesos=4):
+    try:
+        archivos = sorted([f for f in os.listdir(ruta_masks) if f.endswith(('.png', '.jpg'))])
+        total_frames = len(archivos)
+        if total_frames == 0:
+            estado.emitir_etapa("[Aviso] No se encontraron máscaras.")
+            return
+
+        ancho, alto = dimensiones_entrada
+
+        for ventana in tamanos_ventana:
+            estado.emitir_etapa(f"Procesando dispersión con ventana de {ventana} frames")
+            tareas = []
+            for i in range(0, total_frames, ventana):
+                nombre = f"ventana_{i:05d}"
+                subset = archivos[i:i+ventana]
+                tareas.append((nombre, subset, ruta_masks, ancho, alto, grid_size))
+
+            resultados = {}
+            with multiprocessing.Pool(processes=num_procesos) as pool:
+                for idx, resultado in enumerate(pool.imap(worker_dispersion, tareas)):
+                    clave, datos = resultado
+                    resultados[clave] = datos
+                    porcentaje = int((idx / len(tareas)) * 100)
+                    estado.emitir_progreso(porcentaje)
+
+            nombre_archivo = f"dispersion_{ventana}.json"
+            ruta_out = os.path.join(salida_dir, nombre_archivo)
+            with open(ruta_out, "w") as f_out:
+                json.dump(resultados, f_out, indent=2)
+
+    except Exception as e:
+        estado.emitir_error(f"Error en calcular_dispersion_temporal_por_ventana: {str(e)}")
+
+# ---------------------- Estadístico Máscaras: Entropía Espacial ----------------------
+def worker_entropia_binaria(args):
+    ventana_id, archivos, ruta_masks, ancho, alto, grid_size = args
+    filas = columnas = grid_size
+    celda_h = alto // filas
+    celda_w = ancho // columnas
+
+    conteo = np.zeros((filas, columnas), dtype=np.int32)
+    total_frames = len(archivos)
+
+    for nombre_archivo in archivos:
+        ruta = os.path.join(ruta_masks, nombre_archivo)
+        mask = cv2.imread(ruta, cv2.IMREAD_GRAYSCALE)
+        if mask is None:
+            continue
+
+        mask = cv2.resize(mask, (ancho, alto), interpolation=cv2.INTER_NEAREST)
+        binaria = (mask > 0).astype(np.uint8)
+
+        for i in range(filas):
+            for j in range(columnas):
+                y1, y2 = i * celda_h, alto if i == filas - 1 else (i + 1) * celda_h
+                x1, x2 = j * celda_w, ancho if j == columnas - 1 else (j + 1) * celda_w
+                sub = binaria[y1:y2, x1:x2]
+                if np.any(sub):
+                    conteo[i, j] += 1
+
+    # Normalización
+    p = conteo.astype(np.float32) / total_frames
+    p = p[p > 0]  # eliminar ceros para el log
+
+    entropia = -np.sum(p * np.log2(p)) if p.size > 0 else 0.0
+    entropia_max = np.log2(grid_size * grid_size)
+    entropia_norm = entropia / entropia_max if entropia_max > 0 else 0.0
+    return ventana_id, {"entropia": float(round(entropia_norm, 4))}
+
+
+def calcular_entropia_binaria_por_ventana(ruta_masks, salida_dir, dimensiones_entrada, estado,
+                                          tamanos_ventana=[64, 128, 256, 512], grid_size=30, num_procesos=4):
+    try:
+        archivos = sorted([f for f in os.listdir(ruta_masks) if f.endswith(('.png', '.jpg'))])
+        total_frames = len(archivos)
+        if total_frames == 0:
+            estado.emitir_etapa("[Aviso] No se encontraron máscaras.")
+            return
+
+        ancho, alto = dimensiones_entrada
+
+        for ventana in tamanos_ventana:
+            estado.emitir_etapa(f"Procesando entropía binaria con ventana de {ventana} frames")
+            tareas = []
+            for i in range(0, total_frames, ventana):
+                nombre = f"ventana_{i:05d}"
+                subset = archivos[i:i+ventana]
+                tareas.append((nombre, subset, ruta_masks, ancho, alto, grid_size))
+
+            resultados = {}
+            with multiprocessing.Pool(processes=num_procesos) as pool:
+                for idx, resultado in enumerate(pool.imap(worker_entropia_binaria, tareas)):
+                    clave, datos = resultado
+                    resultados[clave] = datos
+                    porcentaje = int((idx / len(tareas)) * 100)
+                    estado.emitir_progreso(porcentaje)
+
+            nombre_archivo = f"entropia_binaria_{ventana}.json"
+            ruta_out = os.path.join(salida_dir, nombre_archivo)
+            with open(ruta_out, "w") as f_out:
+                json.dump(resultados, f_out, indent=2)
+
+    except Exception as e:
+        estado.emitir_error(f"Error en calcular_entropia_binaria_por_ventana: {str(e)}")
+
+
 
 # ---------------------- Procesamiento principal ----------------------
 def procesar_bbox_stats(carpeta_trabajo, estadisticos_seleccionados, num_procesos, dimensiones_entrada, estado):
@@ -752,10 +1237,17 @@ def procesar_bbox_stats(carpeta_trabajo, estadisticos_seleccionados, num_proceso
                     contador += 1
                     estado.emitir_progreso(int((contador / total_descriptores) * 100))
 
-
-
-
-
+                if "velocidad_centroide" in estadisticos_seleccionados:
+                    estado.emitir_etapa("Calculando: Velocidad del centroide grupal")
+                    ruta_centroide = os.path.join(salida_stats, "centroide_grupal.json")
+                    ruta_salida = os.path.join(salida_stats, "velocidad_centroide.json")
+                    calcular_velocidad_centroide(
+                        ruta_centroide_json=ruta_centroide,
+                        salida_path=ruta_salida,
+                        estado=estado
+                    )
+                    contador += 1
+                    estado.emitir_progreso(int((contador / total_descriptores) * 100))
 
                 # ...otros estadísticos aquí
 
@@ -794,7 +1286,7 @@ def procesar_mask_stats(carpeta_trabajo, estadisticos_seleccionados, num_proceso
                 nombre_video = os.path.basename(carpeta_video)
                 estado.emitir_etapa(f"Procesando {nombre_video} ({idx+1}/{total_videos})...")
 
-                ruta_masks = os.path.join(carpeta_video, "máscaras")
+                ruta_masks = os.path.join(carpeta_video, "masks")
                 if not os.path.exists(ruta_masks):
                     estado.emitir_etapa(f"[Aviso] {nombre_video} no tiene máscaras.")
                     continue
@@ -808,6 +1300,7 @@ def procesar_mask_stats(carpeta_trabajo, estadisticos_seleccionados, num_proceso
                 # Aquí se insertará cada estadístico
                 if "histograma_densidad" in estadisticos_seleccionados:
                     estado.emitir_etapa("Calculando: Histograma de densidad")
+                    print(f"[INFO] Procesando histograma de densidad para {nombre_video}...")
                     calcular_histograma_densidad(
                         ruta_masks=ruta_masks,
                         salida_dir=salida_stats,
@@ -818,6 +1311,92 @@ def procesar_mask_stats(carpeta_trabajo, estadisticos_seleccionados, num_proceso
                     )
                     contador += 1
                     estado.emitir_progreso(int((contador / total_descriptores) * 100))
+
+                if "centro_masa_grupo" in estadisticos_seleccionados:
+                    estado.emitir_etapa("Calculando: Centro de masa global (máscaras)")
+                    ruta_salida = os.path.join(salida_stats, "centro_masa.json")
+                    print(f"[INFO] Procesando centro de masa global para {nombre_video}...")
+                    calcular_centro_masa_mascaras(
+                        ruta_masks=ruta_masks,
+                        salida_path=ruta_salida,
+                        dimensiones_entrada=dimensiones_entrada,
+                        estado=estado
+                    )
+                    contador += 1
+                    estado.emitir_progreso(int((contador / total_descriptores) * 100))
+
+                if "varianza_espacial" in estadisticos_seleccionados:
+                    estado.emitir_etapa("Calculando: Varianza espacial")
+                    ruta_salida_varianza = os.path.join(salida_stats, "varianza_espacial.json")
+                    print(f"[INFO] Procesando varianza espacial para {nombre_video}...")
+                    calcular_varianza_espacial(
+                        ruta_masks=ruta_masks,
+                        salida_path=ruta_salida_varianza,
+                        dimensiones_entrada=dimensiones_entrada,
+                        estado=estado
+                    )
+                    contador += 1
+                    estado.emitir_progreso(int((contador / total_descriptores) * 100))
+
+                if "velocidad_grupo" in estadisticos_seleccionados:
+                    estado.emitir_etapa("Calculando: Velocidad del grupo")
+                    print(f"[INFO] Procesando velocidad del grupo para {nombre_video}...")
+                    ruta_salida_velocidad = os.path.join(salida_stats, "velocidad_grupo.json")
+                    calcular_velocidad_grupo(
+                        ruta_masks=ruta_masks,
+                        salida_path=ruta_salida_velocidad,
+                        dimensiones_entrada=dimensiones_entrada,
+                        estado=estado
+                    )
+                    contador += 1
+                    estado.emitir_progreso(int((contador / total_descriptores) * 100))
+
+                if "persistencia_zona" in estadisticos_seleccionados:
+                    estado.emitir_etapa("Calculando: Persistencia espacial por ventanas")
+                    print(f"[INFO] Procesando persistencia espacial por ventanas para {nombre_video}...")
+                    calcular_persistencia_espacial_por_ventana(
+                        ruta_masks=ruta_masks,
+                        salida_dir=salida_stats,
+                        dimensiones_entrada=dimensiones_entrada,
+                        estado=estado,
+                        tamanos_ventana=[64, 128, 256, 512],
+                        grid_size=20
+                    )
+                    contador += 1
+                    estado.emitir_progreso(int((contador / total_descriptores) * 100))
+
+                if "dispersion_temporal" in estadisticos_seleccionados:
+                    estado.emitir_etapa("Calculando: Dispersión temporal por ventanas")
+
+                    calcular_dispersion_temporal_por_ventana(
+                        ruta_masks=ruta_masks,
+                        salida_dir=salida_stats,
+                        dimensiones_entrada=dimensiones_entrada,
+                        estado=estado,
+                        tamanos_ventana=[64, 128, 256, 512],
+                        grid_size=30
+                    )
+
+                    contador += 1
+                    estado.emitir_progreso(int((contador / total_descriptores) * 100))
+
+                if "entropia_binaria" in estadisticos_seleccionados:
+                    estado.emitir_etapa("Calculando: Entropía binaria espacial por ventanas")
+
+                    calcular_entropia_binaria_por_ventana(
+                        ruta_masks=ruta_masks,
+                        salida_dir=salida_stats,
+                        dimensiones_entrada=dimensiones_entrada,
+                        estado=estado,
+                        tamanos_ventana=[64, 128, 256, 512],
+                        grid_size=30
+                    )
+
+                    contador += 1
+                    estado.emitir_progreso(int((contador / total_descriptores) * 100))
+
+
+
 
 
                 # ...otros estadísticos aquí...

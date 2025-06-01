@@ -8,6 +8,11 @@ from processing_GUI.ventanas.ventana_resultado_distribucion import VentanaResult
 from processing_GUI.ventanas.ventana_resultado_bbox_stats import VentanaResultadoBBoxStats
 from processing_GUI.ventanas.ventana_resultado_distancias import VentanaResultadoDistancias
 from processing_GUI.ventanas.ventana_resultado_centroide_global import VentanaResultadoCentroideGrupal
+from processing_GUI.ventanas.ventana_resultado_densidad import VentanaResultadoDensidad
+from processing_GUI.ventanas.ventana_resultado_centro_masa import VentanaResultadoCentroMasa
+from processing_GUI.ventanas.ventana_resultado_mask_stats import VentanaResultadoMaskStats
+from processing_GUI.ventanas.ventana_resultado_persistencia import VentanaResultadoPersistencia
+
 
 
 import os
@@ -19,7 +24,7 @@ class VentanaVisualizacion(QWidget):
         self.ventana_inicio = parent
         self.ventana_resultado = None
         self.setWindowTitle("Visualización de Resultados")
-        self.setMinimumSize(600, 600)
+        self.setMinimumSize(600, 800)
         self.setup_ui()
         self.setup_styles()
 
@@ -70,7 +75,7 @@ class VentanaVisualizacion(QWidget):
         # BLOQUE 1: Distribución espacial
         frame_dist = QFrame()
         layout_dist = QHBoxLayout()
-        label_dist = QLabel("Distribución espacial:")
+        label_dist = QLabel("Distribución espacial Bbox:")
         combo_grid = QComboBox()
         combo_grid.addItems(["5", "10", "15", "20"])
         boton_mostrar_dist = QPushButton("Mostrar")
@@ -120,6 +125,63 @@ class VentanaVisualizacion(QWidget):
         layout_post.addWidget(frame_centroide)
 
         boton_mostrar_centroide.clicked.connect(self.mostrar_centroide_grupal)
+
+        # BLOQUE 5: Densidad desde máscaras
+        frame_densidad = QFrame()
+        layout_densidad = QHBoxLayout()
+        label_densidad = QLabel("Densidad por máscaras:")
+        combo_grid_densidad = QComboBox()
+        combo_grid_densidad.addItems(["5", "10", "15", "20"])
+        boton_mostrar_densidad = QPushButton("Mostrar")
+        layout_densidad.addWidget(label_densidad)
+        layout_densidad.addWidget(combo_grid_densidad)
+        layout_densidad.addWidget(boton_mostrar_densidad)
+        frame_densidad.setLayout(layout_densidad)
+        layout_post.addWidget(frame_densidad)
+
+        boton_mostrar_densidad.clicked.connect(lambda: self.mostrar_densidad(combo_grid_densidad))
+
+        # BLOQUE 6: Estadísticas desde máscaras
+        frame_mask_stats = QFrame()
+        layout_mask_stats = QHBoxLayout()
+        label_mask = QLabel("Estadísticas Masks:")
+        boton_mostrar_mask = QPushButton("Mostrar")
+        layout_mask_stats.addWidget(label_mask)
+        layout_mask_stats.addStretch()
+        layout_mask_stats.addWidget(boton_mostrar_mask)
+        frame_mask_stats.setLayout(layout_mask_stats)
+        layout_post.addWidget(frame_mask_stats)
+
+        boton_mostrar_mask.clicked.connect(self.mostrar_estadisticas_mask)
+
+        # BLOQUE 7: Centro de masa desde máscaras
+        frame_centro_masa = QFrame()
+        layout_centro_masa = QHBoxLayout()
+        label_centro_masa = QLabel("Centro de masa (máscaras):")
+        boton_mostrar_centro_masa = QPushButton("Mostrar")
+        layout_centro_masa.addWidget(label_centro_masa)
+        layout_centro_masa.addStretch()
+        layout_centro_masa.addWidget(boton_mostrar_centro_masa)
+        frame_centro_masa.setLayout(layout_centro_masa)
+        layout_post.addWidget(frame_centro_masa)
+
+        boton_mostrar_centro_masa.clicked.connect(self.mostrar_centro_masa)
+
+        # BLOQUE 8: Persistencia espacial por ventanas
+        frame_persistencia = QFrame()
+        layout_persistencia = QHBoxLayout()
+        label_persistencia = QLabel("Persistencia por ventanas:")
+        boton_mostrar_persistencia = QPushButton("Mostrar")
+        layout_persistencia.addWidget(label_persistencia)
+        layout_persistencia.addStretch()
+        layout_persistencia.addWidget(boton_mostrar_persistencia)
+        frame_persistencia.setLayout(layout_persistencia)
+        layout_post.addWidget(frame_persistencia)
+
+        boton_mostrar_persistencia.clicked.connect(self.mostrar_persistencia)
+
+
+
 
 
         group_post.setLayout(layout_post)
@@ -307,8 +369,89 @@ class VentanaVisualizacion(QWidget):
         self.ventana_centroide.raise_()
         self.ventana_centroide.activateWindow()
 
+    def mostrar_densidad(self, combo_grid_widget):
+        carpeta = self.lineedit_carpeta.text()
+        if not carpeta or not os.path.exists(carpeta):
+            QMessageBox.warning(self, "Carpeta no válida", "Debes seleccionar una carpeta primero.")
+            return
 
+        grid = combo_grid_widget.currentText()
+        nombre_video = os.path.basename(carpeta)
+        ruta_video = os.path.join(carpeta, f"{nombre_video}.mp4")
 
+        if not os.path.exists(ruta_video):
+            QMessageBox.warning(self, "Vídeo no encontrado", f"No se encontró: {ruta_video}")
+            return
+
+        self.ventana_densidad = VentanaResultadoDensidad(
+            ruta_video=ruta_video,
+            carpeta_base=carpeta,
+            grid_inicial=grid
+        )
+        self.ventana_densidad.show()
+        self.ventana_densidad.raise_()
+        self.ventana_densidad.activateWindow()
+
+    def mostrar_centro_masa(self):
+        carpeta = self.lineedit_carpeta.text()
+        if not carpeta or not os.path.exists(carpeta):
+            QMessageBox.warning(self, "Carpeta no válida", "Debes seleccionar una carpeta primero.")
+            return
+
+        nombre_video = os.path.basename(carpeta)
+        ruta_video = os.path.join(carpeta, f"{nombre_video}.mp4")
+
+        if not os.path.exists(ruta_video):
+            QMessageBox.warning(self, "Vídeo no encontrado", f"No se encontró: {ruta_video}")
+            return
+
+        self.ventana_centro_masa = VentanaResultadoCentroMasa(
+            ruta_video=ruta_video,
+            carpeta_base=carpeta
+        )
+        self.ventana_centro_masa.show()
+        self.ventana_centro_masa.raise_()
+        self.ventana_centro_masa.activateWindow()
+
+    def mostrar_estadisticas_mask(self):
+        carpeta = self.lineedit_carpeta.text()
+        if not carpeta or not os.path.exists(carpeta):
+            QMessageBox.warning(self, "Carpeta no válida", "Debes seleccionar una carpeta primero.")
+            return
+
+        nombre_video = os.path.basename(carpeta)
+        ruta_video = os.path.join(carpeta, f"{nombre_video}.mp4")
+        if not os.path.exists(ruta_video):
+            QMessageBox.warning(self, "Vídeo no encontrado", f"No se encontró: {ruta_video}")
+            return
+
+        self.ventana_mask_stats = VentanaResultadoMaskStats(
+            ruta_video=ruta_video,
+            carpeta_base=carpeta
+        )
+        self.ventana_mask_stats.show()
+        self.ventana_mask_stats.raise_()
+        self.ventana_mask_stats.activateWindow()
+
+    def mostrar_persistencia(self):
+        carpeta = self.lineedit_carpeta.text()
+        if not carpeta or not os.path.exists(carpeta):
+            QMessageBox.warning(self, "Carpeta no válida", "Debes seleccionar una carpeta primero.")
+            return
+
+        nombre_video = os.path.basename(carpeta)
+        ruta_video = os.path.join(carpeta, f"{nombre_video}.mp4")
+        if not os.path.exists(ruta_video):
+            QMessageBox.warning(self, "Vídeo no encontrado", f"No se encontró: {ruta_video}")
+            return
+
+        self.ventana_persistencia = VentanaResultadoPersistencia(
+            ruta_video=ruta_video,
+            carpeta_base=carpeta
+        )
+        self.ventana_persistencia.show()
+        self.ventana_persistencia.raise_()
+        self.ventana_persistencia.activateWindow()
 
     def volver_a_inicio(self):
         self.close()
