@@ -4,7 +4,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 import os
 import json
-from processing_GUI.procesamiento.postprocesado import EstadoProceso, procesar_bbox_stats, procesar_mask_stats
+from processing_GUI.procesamiento.postprocesado import EstadoProceso, procesar_bbox_stats, procesar_mask_stats, procesar_tray_stats
 
 
 class VentanaPostprocesado(QWidget):
@@ -104,18 +104,23 @@ class VentanaPostprocesado(QWidget):
         # Grupo: Trayectorias
         self.group_tray = QGroupBox("Estadísticos basados en Trayectorias")
         layout_tray = QVBoxLayout()
+        self.chk_trayectorias = QCheckBox("Recalcular trayectorias")
         self.chk_longitud = QCheckBox("Longitud media de trayectorias")
-        self.chk_velocidad = QCheckBox("Velocidad media por trayectoria")
-        self.chk_direccion = QCheckBox("Dirección dominante del movimiento")
-        self.chk_giros = QCheckBox("Cambios de dirección (zig-zag)")
-        self.chk_orbital = QCheckBox("Circularidad / Patrón orbital")
+        self.hist_distancia = QCheckBox("Histograma de distancias entre frames")
+        self.chk_velocidad = QCheckBox("Velocidad de trayectoria")
+        self.chk_disp_velocidad = QCheckBox("Dispersión de la velocidad")
+        self.chk_cambio_angular = QCheckBox("Cambio angular")
+        self.chk_persistencia_espacial = QCheckBox("Persistencia espacial")
+        self.chk_direccion = QCheckBox("Dirección")
         self.chk_polarizacion = QCheckBox("Índice de polarización")
+        layout_tray.addWidget(self.chk_trayectorias)
         layout_tray.addWidget(self.chk_longitud)
+        layout_tray.addWidget(self.hist_distancia)
         layout_tray.addWidget(self.chk_velocidad)
+        layout_tray.addWidget(self.chk_disp_velocidad)
+        layout_tray.addWidget(self.chk_cambio_angular)
+        layout_tray.addWidget(self.chk_persistencia_espacial)
         layout_tray.addWidget(self.chk_direccion)
-        layout_tray.addWidget(self.chk_giros)
-        layout_tray.addWidget(self.chk_orbital)
-        layout_tray.addWidget(self.chk_polarizacion)
         self.group_tray.setLayout(layout_tray)
         scroll_layout.addWidget(self.group_tray)
 
@@ -210,7 +215,6 @@ class VentanaPostprocesado(QWidget):
             estadisticos_bbox.append("densidad_local")
         if self.chk_vel_centroide_global.isChecked():
             estadisticos_bbox.append("velocidad_centroide")
-        
         #aqui los demas estadísticos de BBoxes
 
         estadisticos_mask = []
@@ -230,7 +234,28 @@ class VentanaPostprocesado(QWidget):
             estadisticos_mask.append("entropia_binaria")
         #aqui los demas estadísticos de máscaras
 
-        if not estadisticos_bbox and not estadisticos_mask:
+        estadisticos_tray = []
+        if self.chk_trayectorias.isChecked():
+            estadisticos_tray.append("recalcular_trayectorias")
+        if self.chk_longitud.isChecked():
+            estadisticos_tray.append("longitud_media_trayectorias")
+        if self.hist_distancia.isChecked():
+            estadisticos_tray.append("histograma_distancias")
+        if self.chk_velocidad.isChecked():
+            estadisticos_tray.append("velocidades")
+        if self.chk_disp_velocidad.isChecked():
+            estadisticos_tray.append("dispersion_velocidad")
+        if self.chk_cambio_angular.isChecked():
+            estadisticos_tray.append("cambio_angular")
+        if self.chk_persistencia_espacial.isChecked():
+            estadisticos_tray.append("persistencia_espacial")
+        if self.chk_direccion.isChecked():
+            estadisticos_tray.append("direccion")
+        #aqui los demas estadísticos de trayectorias 
+
+
+
+        if not estadisticos_bbox and not estadisticos_mask and not estadisticos_tray:
             QMessageBox.warning(self, "Aviso", "Debes seleccionar al menos un estadístico para continuar.")
             return
 
@@ -263,22 +288,36 @@ class VentanaPostprocesado(QWidget):
         self.barra_progreso_etapas.setValue(0)
         self.barra_progreso_especifica.setValue(0)
 
-        print(f"Procesando BBoxes con los siguientes estadísticos: {estadisticos_bbox}")
-        procesar_bbox_stats(
-            carpeta_trabajo=carpeta,
-            estadisticos_seleccionados=estadisticos_bbox,
-            num_procesos=num_procesos,
-            dimensiones_entrada=dimensiones_entrada,
-            estado=estado
-        )
-        print(f"Procesando Máscaras con los siguientes estadísticos: {estadisticos_mask}")
-        procesar_mask_stats(
-            carpeta_trabajo=carpeta,
-            estadisticos_seleccionados=estadisticos_mask,
-            num_procesos=num_procesos,
-            dimensiones_entrada=dimensiones_entrada,
-            estado=estado
-        )
+        if estadisticos_bbox:
+            print(f"Procesando BBoxes con los siguientes estadísticos: {estadisticos_bbox}")
+            procesar_bbox_stats(
+                carpeta_trabajo=carpeta,
+                estadisticos_seleccionados=estadisticos_bbox,
+                num_procesos=num_procesos,
+                dimensiones_entrada=dimensiones_entrada,
+                estado=estado
+            )
+
+
+        if estadisticos_mask:
+            print(f"Procesando Máscaras con los siguientes estadísticos: {estadisticos_mask}")
+            procesar_mask_stats(
+                carpeta_trabajo=carpeta,
+                estadisticos_seleccionados=estadisticos_mask,
+                num_procesos=num_procesos,
+                dimensiones_entrada=dimensiones_entrada,
+                estado=estado
+            )
+
+        if estadisticos_tray:
+            print(f"Procesando Trayectorias con los siguientes estadísticos: {estadisticos_tray}")
+            procesar_tray_stats(
+                carpeta_trabajo=carpeta,
+                estadisticos_seleccionados=estadisticos_tray,
+                num_procesos=num_procesos,
+                dimensiones_entrada=dimensiones_entrada,
+                estado=estado
+            )
 
     
 

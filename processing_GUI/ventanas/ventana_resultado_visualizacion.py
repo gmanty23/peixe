@@ -4,7 +4,6 @@ import numpy as np
 from PySide6.QtWidgets import (QMainWindow, QWidget, QLabel, QPushButton, QSlider, QHBoxLayout, QVBoxLayout)
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QPixmap, QImage
-
 from processing_GUI.procesamiento.visualizacion import (
     cargar_mascara, cargar_bboxes_yolo, dibujar_bboxes,
     superponer_mascara, cargar_recorte, aplicar_recorte, cargar_output_dims

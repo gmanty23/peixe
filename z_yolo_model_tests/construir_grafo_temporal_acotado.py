@@ -9,6 +9,8 @@ import matplotlib.patches as patches
 import cv2
 from collections import defaultdict, deque
 
+
+
 # Funciones para cargar y procesar las etiquetas de detección
 def parse_yolo_label(path, image_size=1024):
     detections = []
@@ -96,11 +98,12 @@ def calcular_iou(bbox1, bbox2):
 # Función para calcular el coste de conexión entre dos blobs
 # El coste se calcula como una combinación de la distancia euclidiana entre centroides, la iou, la diferencia de área y la diferencia de ratio de aspecto
 # Se puede ajustar el peso de cada componente (alpha, beta, gamma, delta) para modificar la importancia relativa
-def calcular_coste_conexion(blob1, blob2, pesos):
+def calcular_coste_conexion(blob1, blob2, pesos, image_size=1024):
     alpha, beta, gamma, delta = pesos
 
     iou = calcular_iou(blob1["bbox"], blob2["bbox"])
-    d_centroid = np.linalg.norm(np.array(blob1["centroid"]) - np.array(blob2["centroid"]))
+    
+    d_centroid = np.linalg.norm(np.array(blob1["centroid"]) - np.array(blob2["centroid"])) / image_size
     area_diff = abs(blob1["area"] - blob2["area"]) / max(blob1["area"], blob2["area"])
 
     def aspect_ratio(bbox):
@@ -112,11 +115,18 @@ def calcular_coste_conexion(blob1, blob2, pesos):
     ratio2 = aspect_ratio(blob2["bbox"])
     aspect_diff = abs(ratio1 - ratio2) / max(ratio1, ratio2) if max(ratio1, ratio2) != 0 else 0
 
-    coste = (alpha * (1 - iou)) + (beta * d_centroid) + (gamma * area_diff) + (delta * aspect_diff)
+    coste = (
+        alpha * (1 - iou) +
+        beta * d_centroid +
+        gamma * area_diff +
+        delta * aspect_diff
+    )
     return coste
 
 
-def calcular_coste_conexion_predicho(blob1, blob2, pesos, trayectoria_pasada):
+# Función para calcular el coste de conexión entre dos blobs, considerando la trayectoria pasada
+# Esta función es similar a calcular_coste_conexion, pero incluye una predicción de la posición del blob2 basada en la trayectoria pasada de blob1
+def calcular_coste_conexion_predicho(blob1, blob2, pesos, trayectoria_pasada, image_size=1024):
     alpha, beta, gamma, delta, epsilon = pesos
 
     def aspect_ratio(bbox):
@@ -125,7 +135,7 @@ def calcular_coste_conexion_predicho(blob1, blob2, pesos, trayectoria_pasada):
         return w / h if h != 0 else 0
 
     iou = calcular_iou(blob1["bbox"], blob2["bbox"])
-    d_centroid = np.linalg.norm(np.array(blob1["centroid"]) - np.array(blob2["centroid"]))
+    d_centroid = np.linalg.norm(np.array(blob1["centroid"]) - np.array(blob2["centroid"]))/ image_size
     area_diff = abs(blob1["area"] - blob2["area"]) / max(blob1["area"], blob2["area"])
     ratio1 = aspect_ratio(blob1["bbox"])
     ratio2 = aspect_ratio(blob2["bbox"])
@@ -135,13 +145,15 @@ def calcular_coste_conexion_predicho(blob1, blob2, pesos, trayectoria_pasada):
         velocidades = [np.array(trayectoria_pasada[i+1]) - np.array(trayectoria_pasada[i]) for i in range(len(trayectoria_pasada)-1)]
         v_media = np.mean(velocidades, axis=0)
         centro_pred = np.array(blob1["centroid"]) + v_media
-        d_pred = np.linalg.norm(centro_pred - np.array(blob2["centroid"]))
+        d_pred = np.linalg.norm(centro_pred - np.array(blob2["centroid"]))/image_size
     else:
         d_pred = 0
 
     coste = (alpha * (1 - iou)) + (beta * d_centroid) + (gamma * area_diff) + (delta * aspect_diff) + (epsilon * d_pred)
     return coste
 
+# Función para reasignar nodos desde un buffer de frames inactivos a nuevos nodos
+# Esta función utiliza el algoritmo húngaro para asignar los nodos del buffer a los nuevos nodos
 def reasignar_desde_buffer(nuevos_nodos, buffer, historico_centroides, pesos_reasignacion, max_coste):
     if not nuevos_nodos or not buffer:
         return [], nuevos_nodos
@@ -272,6 +284,7 @@ def conectar_nodos_hungaro(grafo, pesos, umbral_coste=np.inf, max_ids_activos=50
 #                 siguiente_id += 1
 
 
+# Función para eliminar duplicados basándose en IoU y distancia entre centroides
 
 def eliminar_duplicados(detecciones, iou_thresh=0.4, dist_thresh=20):
     keep = []
@@ -455,8 +468,8 @@ if __name__ == "__main__":
     detecciones_por_frame = cargar_detecciones_por_frame(labels_path)
     grafo_temporal = construir_grafo_temporal(detecciones_por_frame)
 
-    pesos = (0.6, 0.1, 0.05, 0.05, 0.2)  # α, β, γ, δ
-    pesos_reasignacion = (0.05, 0.52, 0.11, 0.11, 0.21)  # α, β, γ, δ, ε
+    pesos = (0.55, 0.2, 0.05, 0.05, 0.15)  # α, β, γ, δ
+    pesos_reasignacion = (0.15, 0.32, 0.11, 0.11, 0.31)  # α, β, γ, δ, ε
     conectar_nodos_hungaro(
         grafo_temporal,
         pesos=pesos,
@@ -478,7 +491,7 @@ if __name__ == "__main__":
     guardar_frames_con_ids(
         grafo=grafo_temporal,
         path_imagenes_originales="/home/gmanty/code/output_20s/images_yolov8_tapado",
-        path_salida="/home/gmanty/code/output_20s/prueba_salida_grafo_ACOTADO_eficiente¿",
+        path_salida="/home/gmanty/code/output_20s/prueba_salida_grafo_ACOTADO_remember",
         image_size=1024
     )
 

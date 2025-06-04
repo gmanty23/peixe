@@ -12,7 +12,9 @@ from processing_GUI.ventanas.ventana_resultado_densidad import VentanaResultadoD
 from processing_GUI.ventanas.ventana_resultado_centro_masa import VentanaResultadoCentroMasa
 from processing_GUI.ventanas.ventana_resultado_mask_stats import VentanaResultadoMaskStats
 from processing_GUI.ventanas.ventana_resultado_persistencia import VentanaResultadoPersistencia
-
+from processing_GUI.ventanas.ventana_resultado_trayectorias import VentanaResultadoTrayectorias
+from processing_GUI.ventanas.ventana_resultado_robustez import VentanaResultadoRobustez
+from processing_GUI.ventanas.ventana_resultado_tray_stats import VentanaResultadoTrayStats
 
 
 import os
@@ -180,8 +182,44 @@ class VentanaVisualizacion(QWidget):
 
         boton_mostrar_persistencia.clicked.connect(self.mostrar_persistencia)
 
+        # BLOQUE 9: Visualización de trayectorias por ID
+        frame_trayectorias = QFrame()
+        layout_trayectorias = QHBoxLayout()
+        label_trayectorias = QLabel("Visualización de trayectorias por ID")
+        boton_mostrar_trayectorias = QPushButton("Mostrar")
+        layout_trayectorias.addWidget(label_trayectorias)
+        layout_trayectorias.addStretch()
+        layout_trayectorias.addWidget(boton_mostrar_trayectorias)
+        frame_trayectorias.setLayout(layout_trayectorias)
+        layout_post.addWidget(frame_trayectorias)
 
+        boton_mostrar_trayectorias.clicked.connect(self.mostrar_trayectorias)
 
+        # BLOQUE 10: Estadísticos de Robustez del Tracking
+        frame_robustez = QFrame()
+        layout_robustez = QHBoxLayout()
+        label_robustez = QLabel("Estadísticos de Robustez del Tracking:")
+        boton_mostrar_robustez = QPushButton("Mostrar")
+        layout_robustez.addWidget(label_robustez)
+        layout_robustez.addStretch()
+        layout_robustez.addWidget(boton_mostrar_robustez)
+        frame_robustez.setLayout(layout_robustez)
+        layout_post.addWidget(frame_robustez)
+
+        boton_mostrar_robustez.clicked.connect(self.mostrar_robustez_tracking)
+
+        # BLOQUE: Velocidades de Peces
+        frame_velocidades = QFrame()
+        layout_velocidades = QHBoxLayout()
+        label_velocidades = QLabel("Estadíscas Trayectorias:")
+        boton_mostrar_velocidades = QPushButton("Mostrar")
+        layout_velocidades.addWidget(label_velocidades)
+        layout_velocidades.addStretch()
+        layout_velocidades.addWidget(boton_mostrar_velocidades)
+        frame_velocidades.setLayout(layout_velocidades)
+        layout_post.addWidget(frame_velocidades)
+
+        boton_mostrar_velocidades.clicked.connect(self.mostrar_velocidades)
 
 
         group_post.setLayout(layout_post)
@@ -452,6 +490,58 @@ class VentanaVisualizacion(QWidget):
         self.ventana_persistencia.show()
         self.ventana_persistencia.raise_()
         self.ventana_persistencia.activateWindow()
+
+    def mostrar_trayectorias(self):
+        carpeta = self.lineedit_carpeta.text()
+        if not carpeta or not os.path.exists(carpeta):
+            QMessageBox.warning(self, "Carpeta no válida", "Debes seleccionar una carpeta primero.")
+            return
+
+        nombre_video = os.path.basename(carpeta)
+        ruta_video = os.path.join(carpeta, f"{nombre_video}.mp4")
+        if not os.path.exists(ruta_video):
+            QMessageBox.warning(self, "Vídeo no encontrado", f"No se encontró: {ruta_video}")
+            return
+        ruta_trayectorias = os.path.join(carpeta, "trayectorias_stats", "trayectorias.json")
+        if os.path.exists(ruta_video) and os.path.exists(ruta_trayectorias):
+            
+            self.ventana_trayectorias = VentanaResultadoTrayectorias(
+                ruta_video=ruta_video,
+                carpeta_base=carpeta
+            )
+            self.ventana_trayectorias.show()
+            self.ventana_trayectorias.raise_()
+            self.ventana_trayectorias.activateWindow()
+            
+        else:
+            QMessageBox.warning(self, "Archivos faltantes", "No se encontró el video o el archivo de trayectorias.")
+
+    def mostrar_robustez_tracking(self):
+        carpeta = self.lineedit_carpeta.text()
+        if not carpeta or not os.path.exists(carpeta):
+            QMessageBox.warning(self, "Carpeta no válida", "Debes seleccionar una carpeta primero.")
+            return
+
+        self.ventana_robustez = VentanaResultadoRobustez(
+            carpeta_base=carpeta
+        )
+        self.ventana_robustez.show()
+        self.ventana_robustez.raise_()
+        self.ventana_robustez.activateWindow()
+
+    def mostrar_velocidades(self):
+        carpeta = self.lineedit_carpeta.text()
+        if not carpeta or not os.path.exists(carpeta):
+            QMessageBox.warning(self, "Carpeta no válida", "Debes seleccionar una carpeta primero.")
+            return
+
+        self.ventana_tray_stats = VentanaResultadoTrayStats(
+            carpeta_base = carpeta
+    )
+        self.ventana_tray_stats.show()
+        self.ventana_tray_stats.raise_()
+        self.ventana_tray_stats.activateWindow()
+
 
     def volver_a_inicio(self):
         self.close()
