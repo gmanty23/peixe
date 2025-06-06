@@ -432,7 +432,7 @@ class VentanaEtiquetado(QMainWindow):
         bbox_label = QLabel("Bounding box (x, y, w, h):")
         self.bbox_lineedit = QLineEdit()
         self.bbox_lineedit.setPlaceholderText("Ej: 100, 200, 300, 400")
-        self.bbox_lineedit.setText("550, 960, 2257, 1186")
+        self.bbox_lineedit.setText("550, 960, 2225, 1186")
         self.bbox_lineedit.setEnabled(True)
 
         bbox_layout.addWidget(bbox_label)
@@ -713,7 +713,7 @@ class VentanaEtiquetado(QMainWindow):
         yolo_bbox_label = QLabel("Bounding box (x, y, w, h):")
         self.yolo_bbox_lineedit = QLineEdit()
         self.yolo_bbox_lineedit.setPlaceholderText("Ej: 100, 200, 300, 400")
-        self.yolo_bbox_lineedit.setText("550, 960, 2257, 1186")
+        self.yolo_bbox_lineedit.setText("550, 960, 2225, 1186")
         yolo_bbox_layout.addWidget(yolo_bbox_label)
         yolo_bbox_layout.addWidget(self.yolo_bbox_lineedit)
         yolo_layout.addLayout(yolo_bbox_layout)

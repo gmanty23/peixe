@@ -5,7 +5,7 @@ from PySide6.QtGui import QFont
 import os
 import json
 from processing_GUI.procesamiento.postprocesado import EstadoProceso, procesar_bbox_stats, procesar_mask_stats, procesar_tray_stats
-
+import shutil
 
 class VentanaPostprocesado(QWidget):
     def __init__(self, parent=None):
@@ -274,10 +274,20 @@ class VentanaPostprocesado(QWidget):
         try:
             subcarpetas = [os.path.join(carpeta, d) for d in os.listdir(carpeta)
                         if os.path.isdir(os.path.join(carpeta, d))]
-            output_dims_path = os.path.join(subcarpetas[0], "bbox", "output_dims.json")
-            with open(output_dims_path, "r") as f:
+            output_dims_path_yolo = os.path.join(subcarpetas[0], "bbox", "output_dims.json")
+            with open(output_dims_path_yolo, "r") as f:
                 dims = json.load(f)
-            dimensiones_entrada = dims["output_dims"]
+            dimensiones_entrada_yolo = dims["output_dims"]
+        except Exception:
+            QMessageBox.critical(self, "Error", "No se pudo leer output_dims.json")
+            return
+        try:
+            subcarpetas = [os.path.join(carpeta, d) for d in os.listdir(carpeta)
+                        if os.path.isdir(os.path.join(carpeta, d))]
+            output_dims_path_morph = os.path.join(subcarpetas[0], "masks", "output_dims.json")
+            with open(output_dims_path_morph, "r") as f:
+                dims = json.load(f)
+            dimensiones_entrada_morph = dims["output_dims"]
         except Exception:
             QMessageBox.critical(self, "Error", "No se pudo leer output_dims.json")
             return
@@ -288,13 +298,34 @@ class VentanaPostprocesado(QWidget):
         self.barra_progreso_etapas.setValue(0)
         self.barra_progreso_especifica.setValue(0)
 
+        # Para cada subdirectorio en la carpeta de trabajo, si existe un video mp4 en la carpeta de trabajo con el mismo nombre que dicho subdirectorio, si este no esta copiado ya en el subdirectorio, se copiará al subdirectorio
+        # Además, la barra de progreso se actualizará con el número de subdirectorios procesados
+        self.etapa_actual.setText("Copiando vídeos a subdirectorios...")
+        self.barra_progreso_etapas.setValue(0)
+        self.barra_progreso_especifica.setValue(0)
+        subcarpetas = [os.path.join(carpeta, d) for d in os.listdir(carpeta)
+                      if os.path.isdir(os.path.join(carpeta, d)) and not d.startswith('.')]
+        self.barra_progreso_etapas.setMaximum(len(subcarpetas))     
+        for idx, subcarpeta in enumerate(subcarpetas):
+            video_path = os.path.join(carpeta, f"{os.path.basename(subcarpeta)}.mp4")
+            if os.path.exists(video_path) and not os.path.exists(os.path.join(subcarpeta, f"{os.path.basename(subcarpeta)}.mp4")):
+                # Copiar el video al subdirectorio
+                try:
+                    print(f"Copiando {video_path} a {subcarpeta}")
+                    shutil.copy2(video_path, os.path.join(subcarpeta, f"{os.path.basename(subcarpeta)}.mp4"))
+
+                except Exception as e:
+                    QMessageBox.critical(self, "Error", f"No se pudo copiar el video: {e}")
+                    return
+            estado.on_video_progreso(idx)
+
         if estadisticos_bbox:
             print(f"Procesando BBoxes con los siguientes estadísticos: {estadisticos_bbox}")
             procesar_bbox_stats(
                 carpeta_trabajo=carpeta,
                 estadisticos_seleccionados=estadisticos_bbox,
                 num_procesos=num_procesos,
-                dimensiones_entrada=dimensiones_entrada,
+                dimensiones_entrada=dimensiones_entrada_yolo,
                 estado=estado
             )
 
@@ -305,7 +336,7 @@ class VentanaPostprocesado(QWidget):
                 carpeta_trabajo=carpeta,
                 estadisticos_seleccionados=estadisticos_mask,
                 num_procesos=num_procesos,
-                dimensiones_entrada=dimensiones_entrada,
+                dimensiones_entrada=dimensiones_entrada_morph,
                 estado=estado
             )
 
@@ -315,7 +346,7 @@ class VentanaPostprocesado(QWidget):
                 carpeta_trabajo=carpeta,
                 estadisticos_seleccionados=estadisticos_tray,
                 num_procesos=num_procesos,
-                dimensiones_entrada=dimensiones_entrada,
+                dimensiones_entrada=dimensiones_entrada_yolo,
                 estado=estado
             )
 
