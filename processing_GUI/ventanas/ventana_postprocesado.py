@@ -271,27 +271,35 @@ class VentanaPostprocesado(QWidget):
         estado.on_total_videos = self.barra_progreso_etapas.setMaximum
         estado.on_video_progreso = lambda idx: self.barra_progreso_etapas.setValue(idx + 1)
         # Buscar dimensiones de entrada desde el primer vídeo válido
-        try:
-            subcarpetas = [os.path.join(carpeta, d) for d in os.listdir(carpeta)
-                        if os.path.isdir(os.path.join(carpeta, d))]
-            output_dims_path_yolo = os.path.join(subcarpetas[0], "bbox", "output_dims.json")
-            with open(output_dims_path_yolo, "r") as f:
-                dims = json.load(f)
-            dimensiones_entrada_yolo = dims["output_dims"]
-        except Exception:
-            QMessageBox.critical(self, "Error", "No se pudo leer output_dims.json")
-            return
-        try:
-            subcarpetas = [os.path.join(carpeta, d) for d in os.listdir(carpeta)
-                        if os.path.isdir(os.path.join(carpeta, d))]
-            output_dims_path_morph = os.path.join(subcarpetas[0], "masks", "output_dims.json")
-            with open(output_dims_path_morph, "r") as f:
-                dims = json.load(f)
-            dimensiones_entrada_morph = dims["output_dims"]
-        except Exception:
-            QMessageBox.critical(self, "Error", "No se pudo leer output_dims.json")
-            return
+        if os.path.exists(os.path.join(subcarpetas[0], "bbox")):
+            try:
+                subcarpetas = [os.path.join(carpeta, d) for d in os.listdir(carpeta)
+                            if os.path.isdir(os.path.join(carpeta, d))]
+                output_dims_path_yolo = os.path.join(subcarpetas[0], "bbox", "output_dims.json")
+                with open(output_dims_path_yolo, "r") as f:
+                    dims = json.load(f)
+                dimensiones_entrada_yolo = dims["output_dims"]
+            except Exception:
+                QMessageBox.critical(self, "Error", "No se pudo leer output_dims.json")
+                return
+        #si existe la carpeta masks
+        # Buscar dimensiones de entrada desde el primer vídeo válido
+        
+        if os.path.exists(os.path.join(subcarpetas[0], "masks")):
+            try:
+                subcarpetas = [os.path.join(carpeta, d) for d in os.listdir(carpeta)
+                            if os.path.isdir(os.path.join(carpeta, d))]
+                output_dims_path_morph = os.path.join(subcarpetas[0], "masks", "output_dims.json")
+                with open(output_dims_path_morph, "r") as f:
+                    dims = json.load(f)
+                dimensiones_entrada_morph = dims["output_dims"]
+            except Exception:
+                QMessageBox.critical(self, "Error", "No se pudo leer output_dims.json")
+                return
 
+        if not os.path.exists(os.path.join(carpeta, "bbox")) and not os.path.exists(os.path.join(carpeta, "masks")):
+            QMessageBox.critical(self, "Error", "No se encontraron resultados de preprocesado en la carpeta seleccionada.")
+            return
         # Llamada al procesado de bbox
         # Reiniciar barras de progreso
         self.etapa_actual.setText("Iniciando postprocesado...")
