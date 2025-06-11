@@ -1,18 +1,20 @@
-from PySide6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QPushButton, QFileDialog, QMessageBox,
-                               QLineEdit, QGroupBox, QHBoxLayout, QCheckBox, QScrollArea, QProgressBar)
-from PySide6.QtCore import Qt
+from PySide6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QPushButton, QFileDialog, QMessageBox, QGridLayout,
+                               QLineEdit, QGroupBox, QHBoxLayout, QCheckBox, QScrollArea, QProgressBar, QSpinBox)
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QFont
 import os
 import json
 from processing_GUI.procesamiento.postprocesado import EstadoProceso, procesar_bbox_stats, procesar_mask_stats, procesar_tray_stats
 import shutil
+from multiprocessing import Process, Queue, cpu_count
+from functools import partial
 
 class VentanaPostprocesado(QWidget):
     def __init__(self, parent=None):
         super().__init__()
         self.ventana_inicio = parent
         self.setWindowTitle("Análisis de comportamiento")
-        self.setMinimumSize(700, 700)
+        self.setMinimumSize(1200, 800)
         self.setup_ui()
         self.setup_styles()
 
@@ -40,8 +42,6 @@ class VentanaPostprocesado(QWidget):
         # Opciones adicionales
         opciones_layout = QHBoxLayout()
 
-        from PySide6.QtWidgets import QSpinBox, QComboBox
-        from multiprocessing import cpu_count
 
         self.spin_nucleos = QSpinBox()
         self.spin_nucleos.setRange(1, cpu_count())
@@ -49,6 +49,15 @@ class VentanaPostprocesado(QWidget):
 
         opciones_layout.addWidget(QLabel("Núcleos:"))
         opciones_layout.addWidget(self.spin_nucleos)
+
+        
+        self.spin_batch = QSpinBox()
+        self.spin_batch.setRange(1, 8)
+        self.spin_batch.setValue(2)
+
+        opciones_layout.addWidget(QLabel("Batch size:"))
+        opciones_layout.addWidget(self.spin_batch)
+
         layout.addLayout(opciones_layout)
 
         # Scroll area para los checkboxes
@@ -127,15 +136,31 @@ class VentanaPostprocesado(QWidget):
         scroll_area.setWidget(contenido_scroll)
         layout.addWidget(scroll_area)
 
-        # Progreso
+        # Barra global
         self.etapa_actual = QLabel("Esperando instrucciones...")
         layout.addWidget(self.etapa_actual)
 
         self.barra_progreso_etapas = QProgressBar()
         layout.addWidget(self.barra_progreso_etapas)
 
-        self.barra_progreso_especifica = QProgressBar()
-        layout.addWidget(self.barra_progreso_especifica)
+        self.layout_videos = QGridLayout()
+        self.barras_por_video = {}
+
+        contenedor_scroll_videos = QWidget()
+        contenedor_scroll_videos.setLayout(self.layout_videos)
+
+        scroll_videos = QScrollArea()
+        scroll_videos.setWidgetResizable(True)
+        scroll_videos.setWidget(contenedor_scroll_videos)
+
+        self.group_videos = QGroupBox("Progreso por vídeo")
+        group_layout = QVBoxLayout()
+        group_layout.addWidget(scroll_videos)
+        self.group_videos.setLayout(group_layout)
+        layout.addWidget(self.group_videos)
+
+
+
 
 
         # Botones inferiores
@@ -180,6 +205,9 @@ class VentanaPostprocesado(QWidget):
                 border: 1px solid #ccc;
                 border-radius: 3px;
             }
+            QProgressBar#barraMini {
+                max-width: 140px;
+            }
         """)
 
     def seleccionar_carpeta(self):
@@ -188,6 +216,11 @@ class VentanaPostprocesado(QWidget):
             self.lineedit_carpeta.setText(carpeta)
 
     def lanzar_postprocesado(self):
+        for i in reversed(range(self.layout_videos.count())):
+            widget = self.layout_videos.itemAt(i).widget()
+            if widget:
+                widget.setParent(None)
+        self.barras_por_video.clear()
         carpeta = self.lineedit_carpeta.text()
         if not carpeta or not os.path.exists(carpeta):
             QMessageBox.critical(self, "Error", "Debes seleccionar una carpeta válida")
@@ -261,11 +294,11 @@ class VentanaPostprocesado(QWidget):
 
         # Obtener número de núcleos y formato
         num_procesos = self.spin_nucleos.value()
+        batch_size = self.spin_batch.value()
 
         # Crear objeto de estado y conectar feedback
         estado = EstadoProceso()
         estado.on_etapa = self.etapa_actual.setText
-        estado.on_progreso = self.barra_progreso_especifica.setValue
         estado.on_error = lambda msg: QMessageBox.critical(self, "Error en el postprocesado", msg)
 
         estado.on_total_videos = self.barra_progreso_etapas.setMaximum
@@ -302,15 +335,14 @@ class VentanaPostprocesado(QWidget):
             return
         # Llamada al procesado de bbox
         # Reiniciar barras de progreso
-        self.etapa_actual.setText("Iniciando postprocesado...")
+        self.etapa_actual.setText("Iniciando postprocesado global...")
         self.barra_progreso_etapas.setValue(0)
-        self.barra_progreso_especifica.setValue(0)
+
 
         # Para cada subdirectorio en la carpeta de trabajo, si existe un video mp4 en la carpeta de trabajo con el mismo nombre que dicho subdirectorio, si este no esta copiado ya en el subdirectorio, se copiará al subdirectorio
         # Además, la barra de progreso se actualizará con el número de subdirectorios procesados
         self.etapa_actual.setText("Copiando vídeos a subdirectorios...")
         self.barra_progreso_etapas.setValue(0)
-        self.barra_progreso_especifica.setValue(0)
         subcarpetas = [os.path.join(carpeta, d) for d in os.listdir(carpeta)
                       if os.path.isdir(os.path.join(carpeta, d)) and not d.startswith('.')]
         self.barra_progreso_etapas.setMaximum(len(subcarpetas))     
@@ -325,38 +357,104 @@ class VentanaPostprocesado(QWidget):
                 except Exception as e:
                     QMessageBox.critical(self, "Error", f"No se pudo copiar el video: {e}")
                     return
-            estado.on_video_progreso(idx)
+            self.barra_progreso_etapas.setValue(idx + 1)
 
-        if estadisticos_bbox:
-            print(f"Procesando BBoxes con los siguientes estadísticos: {estadisticos_bbox}")
-            procesar_bbox_stats(
-                carpeta_trabajo=carpeta,
-                estadisticos_seleccionados=estadisticos_bbox,
-                num_procesos=num_procesos,
-                dimensiones_entrada=dimensiones_entrada_yolo,
-                estado=estado
-            )
+        # Crear colas para recibir progreso y etapa actual
+        cola_bbox = Queue()
+        cola_mask = Queue()
+        cola_tray = Queue()
+
+        videos = [os.path.join(carpeta, d) for d in os.listdir(carpeta)
+                    if os.path.isdir(os.path.join(carpeta, d)) and not d.startswith('.')]
+
+        self.barra_progreso_etapas.setMaximum(len(videos))
+        self.barra_progreso_etapas.setValue(0)
+
+        activos = []
+
+        def lanzar_video(idx, path_video):
+            nombre = os.path.basename(path_video)
+            colas = {}
+            procesos = {}
+
+            layout_columna = QVBoxLayout()
+            self.barras_por_video[nombre] = {}
+
+            # Añadir el título con el nombre del vídeo (recortado si es largo)
+            titulo_video = QLabel(nombre)
+            titulo_video.setAlignment(Qt.AlignCenter)
+            titulo_video.setStyleSheet("font-weight: bold; font-size: 12px;")
+            layout_columna.addWidget(titulo_video)
+            
+            for tipo, lista, funcion, dims in [
+                ("bbox", estadisticos_bbox, procesar_bbox_stats, dimensiones_entrada_yolo),
+                ("mask", estadisticos_mask, procesar_mask_stats, dimensiones_entrada_morph),
+                ("tray", estadisticos_tray, procesar_tray_stats, dimensiones_entrada_yolo)
+            ]:
+                if lista:
+                    q = Queue()
+                    p = Process(target=funcion, args=(path_video, lista, num_procesos, dims, q))
+                    p.start()
+                    colas[tipo] = q
+                    procesos[tipo] = p
+
+                    label = QLabel(f"[{tipo.upper()}] Iniciando...")
+                    barra = QProgressBar()
+                    barra.setObjectName("barraMini")
+                    barra.setMaximum(100)
+                    layout_columna.addWidget(label)
+                    layout_columna.addWidget(barra)
+                    self.barras_por_video[nombre][tipo] = (label, barra)
+
+            contenedor = QWidget()
+            contenedor.setLayout(layout_columna)
+            col_idx = idx  # cada columna es un vídeo distinto
+            self.layout_videos.addWidget(contenedor, 0, col_idx)
+
+            return {"nombre": nombre, "procesos": procesos, "colas": colas, "widget": contenedor}
+
+        from PySide6.QtCore import QTimer
+        idx_actual = 0
+        videos_totales = len(videos)
+
+        def actualizar():
+            nonlocal idx_actual
+
+            # Lanzar nuevos si caben
+            while len(activos) < batch_size and idx_actual < videos_totales:
+                activos.append(lanzar_video(idx_actual, videos[idx_actual]))
+                idx_actual += 1
+
+            # Procesar mensajes de los activos
+            for v in activos[:]:
+                terminado = True
+                for tipo, q in v["colas"].items():
+                    while not q.empty():
+                        msg = q.get()
+                        if isinstance(msg, tuple) and len(msg) == 2:
+                            if msg[0] == "etapa":
+                                self.barras_por_video[v["nombre"]][tipo][0].setText(f"[{tipo.upper()}] {msg[1]}")
+                            elif msg[0] == "progreso":
+                                self.barras_por_video[v["nombre"]][tipo][1].setValue(msg[1])
+                    if v["procesos"][tipo].is_alive():
+                        terminado = False
+
+                if terminado:
+                    for p in v["procesos"].values():
+                        p.join()
+                    v["widget"].setVisible(False)
+                    activos.remove(v)
+                    self.barra_progreso_etapas.setValue(self.barra_progreso_etapas.value() + 1)
+
+            if idx_actual >= videos_totales and not activos:
+                self.etapa_actual.setText("✅ Postprocesado completado.")
+                timer.stop()
+
+        timer = QTimer(self)
+        timer.timeout.connect(actualizar)
+        timer.start(300)
 
 
-        if estadisticos_mask:
-            print(f"Procesando Máscaras con los siguientes estadísticos: {estadisticos_mask}")
-            procesar_mask_stats(
-                carpeta_trabajo=carpeta,
-                estadisticos_seleccionados=estadisticos_mask,
-                num_procesos=num_procesos,
-                dimensiones_entrada=dimensiones_entrada_morph,
-                estado=estado
-            )
-
-        if estadisticos_tray:
-            print(f"Procesando Trayectorias con los siguientes estadísticos: {estadisticos_tray}")
-            procesar_tray_stats(
-                carpeta_trabajo=carpeta,
-                estadisticos_seleccionados=estadisticos_tray,
-                num_procesos=num_procesos,
-                dimensiones_entrada=dimensiones_entrada_yolo,
-                estado=estado
-            )
 
     
 
