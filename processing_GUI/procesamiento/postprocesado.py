@@ -13,25 +13,31 @@ import math
 
 # ---------------------- EstadoProceso ----------------------
 class EstadoProceso:
-    def __init__(self):
+    def __init__(self, cola=None):
+        self.cola = cola
         self.on_etapa = None
         self.on_progreso = None
         self.on_error = None
         self.on_total_videos = None
         self.on_video_progreso = None
 
-
     def emitir_etapa(self, mensaje):
         if self.on_etapa:
             self.on_etapa(mensaje)
+        if self.cola:
+            self.cola.put(("etapa", mensaje))
 
     def emitir_progreso(self, porcentaje):
         if self.on_progreso:
             self.on_progreso(porcentaje)
+        if self.cola:
+            self.cola.put(("progreso", porcentaje))
 
     def emitir_error(self, mensaje):
         if self.on_error:
             self.on_error(mensaje)
+        if self.cola:
+            self.cola.put(("etapa", f"[ERROR] {mensaje}"))
 
     def emitir_total_videos(self, total):
         if self.on_total_videos:
@@ -1785,10 +1791,6 @@ def calcular_persistencia_espacial(ruta_trayectorias_json, salida_path, estado, 
         estado.emitir_error(f"Error en calcular_persistencia_espacial: {str(e)}")
 
 def calcular_direcciones(ruta_trayectorias_json, salida_path, estado):
-    import numpy as np
-    import json
-    import math
-
     try:
         with open(ruta_trayectorias_json, "r") as f:
             trayectorias = json.load(f)
@@ -1877,180 +1879,163 @@ def calcular_direcciones(ruta_trayectorias_json, salida_path, estado):
 
 
 # ---------------------- PROCESAMIENTO PRINCIPAL ----------------------
-def procesar_bbox_stats(carpeta_trabajo, estadisticos_seleccionados, num_procesos, dimensiones_entrada, estado):
+def procesar_bbox_stats(path_video, estadisticos_seleccionados, num_procesos, dimensiones_entrada, cola=None):
     try:
 
-        carpetas_videos = [os.path.join(carpeta_trabajo, d) for d in os.listdir(carpeta_trabajo)
-                           if os.path.isdir(os.path.join(carpeta_trabajo, d))]
-
-        total_videos = len(carpetas_videos)
-        if total_videos == 0:
-            estado.emitir_error("No se encontraron subcarpetas de vídeos.")
-            return
+        estado = EstadoProceso(cola)
+        nombre_video = os.path.splitext(os.path.basename(path_video))[0]
+        carpeta_padre = os.path.dirname(path_video)
+        carpeta_video = os.path.join(carpeta_padre, nombre_video)
+        
 
         estado.emitir_etapa("Iniciando estadísticos de BBox...")
-        estado.emitir_total_videos(total_videos)
 
-        for idx, carpeta_video in enumerate(carpetas_videos):
-            try:
-                estado.emitir_progreso(0)
-                nombre_video = os.path.basename(carpeta_video)
-                estado.emitir_etapa(f"Procesando {nombre_video} ({idx+1}/{total_videos})...")
-                ruta_labels = os.path.join(carpeta_video, "bbox", "labels")
 
-                if not os.path.exists(ruta_labels):
-                    estado.emitir_etapa(f"[Aviso] {nombre_video} no tiene etiquetas YOLO.")
-                    continue
+        estado.emitir_progreso(0)
+        ruta_labels = os.path.join(carpeta_video, "bbox", "labels")
 
-                salida_stats = os.path.join(carpeta_video, "bbox_stats")
-                os.makedirs(salida_stats, exist_ok=True)
+        if not os.path.exists(ruta_labels):
+            estado.emitir_etapa(f"[Aviso] {nombre_video} no tiene etiquetas YOLO.")
 
-                # Paso previo: extraer centroides y guardarlos
-                ruta_centroides_json = os.path.join(salida_stats, "centroides.json")
-                estado.emitir_etapa("Calculando centroides...")
-                ok = extraer_centroides(ruta_labels, ruta_centroides_json)
-                if not ok:
-                    estado.emitir_etapa(f"[Aviso] No se pudieron calcular centroides para {nombre_video}.")
-                    continue
+        salida_stats = os.path.join(carpeta_video, "bbox_stats")
+        os.makedirs(salida_stats, exist_ok=True)
 
-                total_descriptores = len(estadisticos_seleccionados)
-                contador = 0
+        # Paso previo: extraer centroides y guardarlos
+        ruta_centroides_json = os.path.join(salida_stats, "centroides.json")
+        estado.emitir_etapa("Calculando centroides...")
+        ok = extraer_centroides(ruta_labels, ruta_centroides_json)
+        if not ok:
+            estado.emitir_etapa(f"[Aviso] No se pudieron calcular centroides para {nombre_video}.")
+
+        total_descriptores = len(estadisticos_seleccionados)
+        contador = 0
 
 
 
-                # Aquí se llamarían las funciones individuales de estadísticos
-                if "distribucion_espacial" in estadisticos_seleccionados:
-                    estado.emitir_etapa("Calculando: Distribución espacial")
-                    print(f"[INFO] Procesando distribución espacial para {nombre_video}...")
-                    calcular_distribucion_espacial(
-                        ruta_centroides_json,
-                        salida_stats,
-                        dimensiones_entrada,
-                        tamanos_grid=[5, 10, 15, 20],
-                        num_procesos=num_procesos,
-                        estado=estado
-                    )
-                    contador += 1
-                    estado.emitir_progreso(int((contador / total_descriptores) * 100))
-                    estado.emitir_video_progreso(idx)
+        # Aquí se llamarían las funciones individuales de estadísticos
+        if "distribucion_espacial" in estadisticos_seleccionados:
+            estado.emitir_etapa("Calculando: Distribución espacial")
+            print(f"[INFO] Procesando distribución espacial para {nombre_video}...")
+            calcular_distribucion_espacial(
+                ruta_centroides_json,
+                salida_stats,
+                dimensiones_entrada,
+                tamanos_grid=[5, 10, 15, 20],
+                num_procesos=num_procesos,
+                estado=estado
+            )
+            contador += 1
+            estado.emitir_progreso(int((contador / total_descriptores) * 100))
 
-                if "area_media" in estadisticos_seleccionados:
-                    estado.emitir_etapa("Calculando: Área media de blobs")
-                    print(f"[INFO] Procesando área media de blobs para {nombre_video}...")
-                    ruta_salida_area = os.path.join(salida_stats, "areas_blobs.json")
-                    calcular_areas_blobs(
-                        ruta_labels=ruta_labels,
-                        salida_path=ruta_salida_area,
-                        estado=estado
-                    )
-                    contador += 1
-                    estado.emitir_progreso(int((contador / total_descriptores) * 100))
+        if "area_media" in estadisticos_seleccionados:
+            estado.emitir_etapa("Calculando: Área media de blobs")
+            print(f"[INFO] Procesando área media de blobs para {nombre_video}...")
+            ruta_salida_area = os.path.join(salida_stats, "areas_blobs.json")
+            calcular_areas_blobs(
+                ruta_labels=ruta_labels,
+                salida_path=ruta_salida_area,
+                estado=estado
+            )
+            contador += 1
+            estado.emitir_progreso(int((contador / total_descriptores) * 100))
 
-                if "distancia_centroides" in estadisticos_seleccionados:
-                    print(f"[INFO] Procesando distancia entre centroides para {nombre_video}...")
-                    estado.emitir_etapa("Calculando: Distancia entre centroides")
-                    ruta_salida_distancias = os.path.join(salida_stats, "distancia_centroides.json")
-                    calcular_distancia_centroides(
-                        ruta_centroides_json=ruta_centroides_json,
-                        salida_path=ruta_salida_distancias,
-                        estado=estado
-                    )
-                    contador += 1
-                    estado.emitir_progreso(int((contador / total_descriptores) * 100))
+        if "distancia_centroides" in estadisticos_seleccionados:
+            print(f"[INFO] Procesando distancia entre centroides para {nombre_video}...")
+            estado.emitir_etapa("Calculando: Distancia entre centroides")
+            ruta_salida_distancias = os.path.join(salida_stats, "distancia_centroides.json")
+            calcular_distancia_centroides(
+                ruta_centroides_json=ruta_centroides_json,
+                salida_path=ruta_salida_distancias,
+                estado=estado
+            )
+            contador += 1
+            estado.emitir_progreso(int((contador / total_descriptores) * 100))
 
-                if "coeficiente_agrupacion" in estadisticos_seleccionados:
-                    print(f"[INFO] Procesando coeficiente de agrupación para {nombre_video}...")
-                    estado.emitir_etapa("Calculando: Coeficiente de agrupación (centroide + IoU)")
-                    ruta_salida_agrupacion = os.path.join(salida_stats, "coef_agrupacion.json")
-                    calcular_coef_agrupacion(
-                        ruta_centroides_json=ruta_centroides_json,
-                        ruta_labels=ruta_labels,
-                        salida_path=ruta_salida_agrupacion,
-                        umbral_distancia=75,
-                        umbral_iou=0.3,
-                        estado=estado
-                    )
-                    contador += 1
-                    estado.emitir_progreso(int((contador / total_descriptores) * 100))
+        if "coeficiente_agrupacion" in estadisticos_seleccionados:
+            print(f"[INFO] Procesando coeficiente de agrupación para {nombre_video}...")
+            estado.emitir_etapa("Calculando: Coeficiente de agrupación (centroide + IoU)")
+            ruta_salida_agrupacion = os.path.join(salida_stats, "coef_agrupacion.json")
+            calcular_coef_agrupacion(
+                ruta_centroides_json=ruta_centroides_json,
+                ruta_labels=ruta_labels,
+                salida_path=ruta_salida_agrupacion,
+                umbral_distancia=75,
+                umbral_iou=0.3,
+                estado=estado
+            )
+            contador += 1
+            estado.emitir_progreso(int((contador / total_descriptores) * 100))
 
-                if "entropia_espacial" in estadisticos_seleccionados:
-                    print(f"[INFO] Procesando entropía espacial para {nombre_video}...")
-                    estado.emitir_etapa("Calculando: Entropía espacial")
-                    ruta_salida_entropia = os.path.join(salida_stats, "entropia.json")
-                    calcular_entropia_espacial(
-                        ruta_centroides_json=ruta_centroides_json,
-                        salida_path=ruta_salida_entropia,
-                        dimensiones_entrada=dimensiones_entrada,
-                        grid_size=10,
-                        estado=estado
-                    )
-                    contador += 1
-                    estado.emitir_progreso(int((contador / total_descriptores) * 100))
+        if "entropia_espacial" in estadisticos_seleccionados:
+            print(f"[INFO] Procesando entropía espacial para {nombre_video}...")
+            estado.emitir_etapa("Calculando: Entropía espacial")
+            ruta_salida_entropia = os.path.join(salida_stats, "entropia.json")
+            calcular_entropia_espacial(
+                ruta_centroides_json=ruta_centroides_json,
+                salida_path=ruta_salida_entropia,
+                dimensiones_entrada=dimensiones_entrada,
+                grid_size=10,
+                estado=estado
+            )
+            contador += 1
+            estado.emitir_progreso(int((contador / total_descriptores) * 100))
 
-                if "indice_exploracion" in estadisticos_seleccionados:
-                    print(f"[INFO] Procesando índice de exploración para {nombre_video}...")
-                    estado.emitir_etapa("Calculando: Índice de exploración")
-                    ruta_salida_exploracion = os.path.join(salida_stats, "exploracion.json")
-                    calcular_indice_exploracion(
-                        ruta_centroides_json=ruta_centroides_json,
-                        salida_path=ruta_salida_exploracion,
-                        dimensiones_entrada=dimensiones_entrada,
-                        grid_size=25,
-                        ventana_frames=128,
-                        estado=estado
-                    )
-                    contador += 1
-                    estado.emitir_progreso(int((contador / total_descriptores) * 100))
+        if "indice_exploracion" in estadisticos_seleccionados:
+            print(f"[INFO] Procesando índice de exploración para {nombre_video}...")
+            estado.emitir_etapa("Calculando: Índice de exploración")
+            ruta_salida_exploracion = os.path.join(salida_stats, "exploracion.json")
+            calcular_indice_exploracion(
+                ruta_centroides_json=ruta_centroides_json,
+                salida_path=ruta_salida_exploracion,
+                dimensiones_entrada=dimensiones_entrada,
+                grid_size=25,
+                ventana_frames=128,
+                estado=estado
+            )
+            contador += 1
+            estado.emitir_progreso(int((contador / total_descriptores) * 100))
 
-                if "distancia_centroide_global" in estadisticos_seleccionados:
-                    print(f"[INFO] Procesando distancia al centroide grupal para {nombre_video}...")
-                    estado.emitir_etapa("Calculando: Distancia al centroide grupal")
-                    ruta_salida_distancia_grupal = os.path.join(salida_stats, "distancia_centroide_grupal.json")
-                    calcular_distancia_centroide_grupal(
-                        ruta_centroides_json=ruta_centroides_json,
-                        salida_path=ruta_salida_distancia_grupal,
-                        estado=estado
-                    )
-                    contador += 1
-                    estado.emitir_progreso(int((contador / total_descriptores) * 100))
+            if "distancia_centroide_global" in estadisticos_seleccionados:
+                print(f"[INFO] Procesando distancia al centroide grupal para {nombre_video}...")
+                estado.emitir_etapa("Calculando: Distancia al centroide grupal")
+                ruta_salida_distancia_grupal = os.path.join(salida_stats, "distancia_centroide_grupal.json")
+                calcular_distancia_centroide_grupal(
+                    ruta_centroides_json=ruta_centroides_json,
+                    salida_path=ruta_salida_distancia_grupal,
+                    estado=estado
+                )
+                contador += 1
+                estado.emitir_progreso(int((contador / total_descriptores) * 100))
 
-                if "densidad_local" in estadisticos_seleccionados:
-                    print(f"[INFO] Procesando densidad local para {nombre_video}...")
-                    estado.emitir_etapa("Calculando: Densidad local")
-                    ruta_salida_densidad = os.path.join(salida_stats, "densidad_local.json")
-                    calcular_densidad_local(
-                        ruta_centroides_json=ruta_centroides_json,
-                        ruta_labels=ruta_labels,
-                        salida_path=ruta_salida_densidad,
-                        estado=estado,
-                        umbral_distancia=75,
-                        umbral_iou=0.3
-                    )
-                    contador += 1
-                    estado.emitir_progreso(int((contador / total_descriptores) * 100))
+            if "densidad_local" in estadisticos_seleccionados:
+                print(f"[INFO] Procesando densidad local para {nombre_video}...")
+                estado.emitir_etapa("Calculando: Densidad local")
+                ruta_salida_densidad = os.path.join(salida_stats, "densidad_local.json")
+                calcular_densidad_local(
+                    ruta_centroides_json=ruta_centroides_json,
+                    ruta_labels=ruta_labels,
+                    salida_path=ruta_salida_densidad,
+                    estado=estado,
+                    umbral_distancia=75,
+                    umbral_iou=0.3
+                )
+                contador += 1
+                estado.emitir_progreso(int((contador / total_descriptores) * 100))
 
-                if "velocidad_centroide" in estadisticos_seleccionados:
-                    estado.emitir_etapa("Calculando: Velocidad del centroide grupal")
-                    ruta_centroide = os.path.join(salida_stats, "centroide_grupal.json")
-                    ruta_salida = os.path.join(salida_stats, "velocidad_centroide.json")
-                    calcular_velocidad_centroide(
-                        ruta_centroide_json=ruta_centroide,
-                        salida_path=ruta_salida,
-                        estado=estado
-                    )
-                    contador += 1
-                    estado.emitir_progreso(int((contador / total_descriptores) * 100))
+            if "velocidad_centroide" in estadisticos_seleccionados:
+                estado.emitir_etapa("Calculando: Velocidad del centroide grupal")
+                ruta_centroide = os.path.join(salida_stats, "centroide_grupal.json")
+                ruta_salida = os.path.join(salida_stats, "velocidad_centroide.json")
+                calcular_velocidad_centroide(
+                    ruta_centroide_json=ruta_centroide,
+                    salida_path=ruta_salida,
+                    estado=estado
+                )
+                contador += 1
+                estado.emitir_progreso(int((contador / total_descriptores) * 100))
 
-                # ...otros estadísticos aquí
+            # ...otros estadísticos aquí
 
-                estado.emitir_progreso(int(((idx + 1) / total_videos) * 100))
-                print(f"[INFO] Procesados {idx + 1} de {total_videos} vídeos.")
-
-
-            except Exception as e:
-                print(f"[Error] al procesar {carpeta_video}: {str(e)}")
-                estado.emitir_etapa(f"[Error] en {carpeta_video}: {str(e)}")
-                continue 
 
         estado.emitir_etapa("Cálculo completado.")
 
@@ -2059,145 +2044,132 @@ def procesar_bbox_stats(carpeta_trabajo, estadisticos_seleccionados, num_proceso
         estado.emitir_error(error_msg)
 
 
-def procesar_mask_stats(carpeta_trabajo, estadisticos_seleccionados, num_procesos, dimensiones_entrada, estado):
+def procesar_mask_stats(path_video, estadisticos_seleccionados, num_procesos, dimensiones_entrada, cola=None):
     try:
-        carpetas_videos = [os.path.join(carpeta_trabajo, d) for d in os.listdir(carpeta_trabajo)
-                           if os.path.isdir(os.path.join(carpeta_trabajo, d))]
+        estado = EstadoProceso(cola)
 
-        total_videos = len(carpetas_videos)
-        if total_videos == 0:
-            estado.emitir_error("No se encontraron subcarpetas de vídeos.")
-            return
+        nombre_video = os.path.splitext(os.path.basename(path_video))[0]
+        carpeta_padre = os.path.dirname(path_video)
+        carpeta_video = os.path.join(carpeta_padre, nombre_video)
 
         estado.emitir_etapa("Iniciando estadísticos de máscaras...")
-        estado.emitir_total_videos(total_videos)
 
-        for idx, carpeta_video in enumerate(carpetas_videos):
-            try:
-                estado.emitir_progreso(0)
-                nombre_video = os.path.basename(carpeta_video)
-                estado.emitir_etapa(f"Procesando {nombre_video} ({idx+1}/{total_videos})...")
 
-                ruta_masks = os.path.join(carpeta_video, "masks")
-                if not os.path.exists(ruta_masks):
-                    estado.emitir_etapa(f"[Aviso] {nombre_video} no tiene máscaras.")
-                    continue
+        estado.emitir_progreso(0)
+        ruta_masks = os.path.join(carpeta_video, "masks")
+        if not os.path.exists(ruta_masks):
+            estado.emitir_etapa(f"[Aviso] {nombre_video} no tiene máscaras.")
 
-                salida_stats = os.path.join(carpeta_video, "mask_stats")
-                os.makedirs(salida_stats, exist_ok=True)
+        salida_stats = os.path.join(carpeta_video, "mask_stats")
+        os.makedirs(salida_stats, exist_ok=True)
 
-                total_descriptores = len(estadisticos_seleccionados)
-                contador = 0
+        total_descriptores = len(estadisticos_seleccionados)
+        contador = 0
 
-                # Aquí se insertará cada estadístico
-                if "histograma_densidad" in estadisticos_seleccionados:
-                    estado.emitir_etapa("Calculando: Histograma de densidad")
-                    print(f"[INFO] Procesando histograma de densidad para {nombre_video}...")
-                    calcular_histograma_densidad(
-                        ruta_masks=ruta_masks,
-                        salida_dir=salida_stats,
-                        dimensiones_entrada=dimensiones_entrada,
-                        estado=estado,
-                        tamanos_grid=[5, 10, 15, 20],
-                        num_procesos=num_procesos
-                    )
-                    contador += 1
-                    estado.emitir_progreso(int((contador / total_descriptores) * 100))
+        # Aquí se insertará cada estadístico
+        if "histograma_densidad" in estadisticos_seleccionados:
+            estado.emitir_etapa("Calculando: Histograma de densidad")
+            print(f"[INFO] Procesando histograma de densidad para {nombre_video}...")
+            calcular_histograma_densidad(
+                ruta_masks=ruta_masks,
+                salida_dir=salida_stats,
+                dimensiones_entrada=dimensiones_entrada,
+                estado=estado,
+                tamanos_grid=[5, 10, 15, 20],
+                num_procesos=num_procesos
+            )
+            contador += 1
+            estado.emitir_progreso(int((contador / total_descriptores) * 100))
 
-                if "centro_masa_grupo" in estadisticos_seleccionados:
-                    estado.emitir_etapa("Calculando: Centro de masa global (máscaras)")
-                    ruta_salida = os.path.join(salida_stats, "centro_masa.json")
-                    print(f"[INFO] Procesando centro de masa global para {nombre_video}...")
-                    calcular_centro_masa_mascaras(
-                        ruta_masks=ruta_masks,
-                        salida_path=ruta_salida,
-                        dimensiones_entrada=dimensiones_entrada,
-                        estado=estado
-                    )
-                    contador += 1
-                    estado.emitir_progreso(int((contador / total_descriptores) * 100))
+        if "centro_masa_grupo" in estadisticos_seleccionados:
+            estado.emitir_etapa("Calculando: Centro de masa global (máscaras)")
+            ruta_salida = os.path.join(salida_stats, "centro_masa.json")
+            print(f"[INFO] Procesando centro de masa global para {nombre_video}...")
+            calcular_centro_masa_mascaras(
+                ruta_masks=ruta_masks,
+                salida_path=ruta_salida,
+                dimensiones_entrada=dimensiones_entrada,
+                estado=estado
+            )
+            contador += 1
+            estado.emitir_progreso(int((contador / total_descriptores) * 100))
 
-                if "varianza_espacial" in estadisticos_seleccionados:
-                    estado.emitir_etapa("Calculando: Varianza espacial")
-                    ruta_salida_varianza = os.path.join(salida_stats, "varianza_espacial.json")
-                    print(f"[INFO] Procesando varianza espacial para {nombre_video}...")
-                    calcular_varianza_espacial(
-                        ruta_masks=ruta_masks,
-                        salida_path=ruta_salida_varianza,
-                        dimensiones_entrada=dimensiones_entrada,
-                        estado=estado
-                    )
-                    contador += 1
-                    estado.emitir_progreso(int((contador / total_descriptores) * 100))
+        if "varianza_espacial" in estadisticos_seleccionados:
+            estado.emitir_etapa("Calculando: Varianza espacial")
+            ruta_salida_varianza = os.path.join(salida_stats, "varianza_espacial.json")
+            print(f"[INFO] Procesando varianza espacial para {nombre_video}...")
+            calcular_varianza_espacial(
+                ruta_masks=ruta_masks,
+                salida_path=ruta_salida_varianza,
+                dimensiones_entrada=dimensiones_entrada,
+                estado=estado
+            )
+            contador += 1
+            estado.emitir_progreso(int((contador / total_descriptores) * 100))
 
-                if "velocidad_grupo" in estadisticos_seleccionados:
-                    estado.emitir_etapa("Calculando: Velocidad del grupo")
-                    print(f"[INFO] Procesando velocidad del grupo para {nombre_video}...")
-                    ruta_salida_velocidad = os.path.join(salida_stats, "velocidad_grupo.json")
-                    calcular_velocidad_grupo(
-                        ruta_masks=ruta_masks,
-                        salida_path=ruta_salida_velocidad,
-                        dimensiones_entrada=dimensiones_entrada,
-                        estado=estado
-                    )
-                    contador += 1
-                    estado.emitir_progreso(int((contador / total_descriptores) * 100))
+        if "velocidad_grupo" in estadisticos_seleccionados:
+            estado.emitir_etapa("Calculando: Velocidad del grupo")
+            print(f"[INFO] Procesando velocidad del grupo para {nombre_video}...")
+            ruta_salida_velocidad = os.path.join(salida_stats, "velocidad_grupo.json")
+            calcular_velocidad_grupo(
+                ruta_masks=ruta_masks,
+                salida_path=ruta_salida_velocidad,
+                dimensiones_entrada=dimensiones_entrada,
+                estado=estado
+            )
+            contador += 1
+            estado.emitir_progreso(int((contador / total_descriptores) * 100))
 
-                if "persistencia_zona" in estadisticos_seleccionados:
-                    estado.emitir_etapa("Calculando: Persistencia espacial por ventanas")
-                    print(f"[INFO] Procesando persistencia espacial por ventanas para {nombre_video}...")
-                    calcular_persistencia_espacial_por_ventana(
-                        ruta_masks=ruta_masks,
-                        salida_dir=salida_stats,
-                        dimensiones_entrada=dimensiones_entrada,
-                        estado=estado,
-                        tamanos_ventana=[64, 128, 256, 512],
-                        grid_size=20
-                    )
-                    contador += 1
-                    estado.emitir_progreso(int((contador / total_descriptores) * 100))
+        if "persistencia_zona" in estadisticos_seleccionados:
+            estado.emitir_etapa("Calculando: Persistencia espacial por ventanas")
+            print(f"[INFO] Procesando persistencia espacial por ventanas para {nombre_video}...")
+            calcular_persistencia_espacial_por_ventana(
+                ruta_masks=ruta_masks,
+                salida_dir=salida_stats,
+                dimensiones_entrada=dimensiones_entrada,
+                estado=estado,
+                tamanos_ventana=[64, 128, 256, 512],
+                grid_size=20
+            )
+            contador += 1
+            estado.emitir_progreso(int((contador / total_descriptores) * 100))
 
-                if "dispersion_temporal" in estadisticos_seleccionados:
-                    estado.emitir_etapa("Calculando: Dispersión temporal por ventanas")
+        if "dispersion_temporal" in estadisticos_seleccionados:
+            estado.emitir_etapa("Calculando: Dispersión temporal por ventanas")
 
-                    calcular_dispersion_temporal_por_ventana(
-                        ruta_masks=ruta_masks,
-                        salida_dir=salida_stats,
-                        dimensiones_entrada=dimensiones_entrada,
-                        estado=estado,
-                        tamanos_ventana=[64, 128, 256, 512],
-                        grid_size=30
-                    )
+            calcular_dispersion_temporal_por_ventana(
+                ruta_masks=ruta_masks,
+                salida_dir=salida_stats,
+                dimensiones_entrada=dimensiones_entrada,
+                estado=estado,
+                tamanos_ventana=[64, 128, 256, 512],
+                grid_size=30
+            )
 
-                    contador += 1
-                    estado.emitir_progreso(int((contador / total_descriptores) * 100))
+            contador += 1
+            estado.emitir_progreso(int((contador / total_descriptores) * 100))
 
-                if "entropia_binaria" in estadisticos_seleccionados:
-                    estado.emitir_etapa("Calculando: Entropía binaria espacial por ventanas")
+        if "entropia_binaria" in estadisticos_seleccionados:
+            estado.emitir_etapa("Calculando: Entropía binaria espacial por ventanas")
 
-                    calcular_entropia_binaria_por_ventana(
-                        ruta_masks=ruta_masks,
-                        salida_dir=salida_stats,
-                        dimensiones_entrada=dimensiones_entrada,
-                        estado=estado,
-                        tamanos_ventana=[64, 128, 256, 512],
-                        grid_size=30
-                    )
+            calcular_entropia_binaria_por_ventana(
+                ruta_masks=ruta_masks,
+                salida_dir=salida_stats,
+                dimensiones_entrada=dimensiones_entrada,
+                estado=estado,
+                tamanos_ventana=[64, 128, 256, 512],
+                grid_size=30
+            )
 
-                    contador += 1
-                    estado.emitir_progreso(int((contador / total_descriptores) * 100))
+            contador += 1
+            estado.emitir_progreso(int((contador / total_descriptores) * 100))
 
 
 
 
 
-                # ...otros estadísticos aquí...
+        # ...otros estadísticos aquí...
 
-                estado.emitir_video_progreso(idx)
-
-            except Exception as e:
-                estado.emitir_etapa(f"[Error] en {carpeta_video}: {str(e)}")
-                continue
 
         estado.emitir_etapa("Cálculo completado para estadísticas de máscaras.")
 
@@ -2205,148 +2177,132 @@ def procesar_mask_stats(carpeta_trabajo, estadisticos_seleccionados, num_proceso
         estado.emitir_error(f"Error en procesar_mask_stats: {str(e)}")
 
 
-def procesar_tray_stats(carpeta_trabajo, estadisticos_seleccionados, num_procesos, dimensiones_entrada, estado):
+def procesar_tray_stats(path_video, estadisticos_seleccionados, num_procesos, dimensiones_entrada, cola=None):
     try:
-        carpetas_videos = [os.path.join(carpeta_trabajo, d) for d in os.listdir(carpeta_trabajo)
-                           if os.path.isdir(os.path.join(carpeta_trabajo, d))]
-
-        total_videos = len(carpetas_videos)
-        if total_videos == 0:
-            estado.emitir_error("No se encontraron subcarpetas de vídeos.")
-            return
+        estado = EstadoProceso(cola)
+        nombre_video = os.path.splitext(os.path.basename(path_video))[0]
+        carpeta_padre = os.path.dirname(path_video)
+        carpeta_video = os.path.join(carpeta_padre, nombre_video)
+        
 
         estado.emitir_etapa("Iniciando estadísticos de trayectorias...")
-        estado.emitir_total_videos(total_videos)
 
-        for idx, carpeta_video in enumerate(carpetas_videos):
-            try:
-                estado.emitir_progreso(0)
-                nombre_video = os.path.basename(carpeta_video)
-                estado.emitir_etapa(f"Procesando {nombre_video} ({idx+1}/{total_videos})...")
+        estado.emitir_progreso(0)
+        total_descriptores = len(estadisticos_seleccionados)
+        contador = 0
 
-                total_descriptores = len(estadisticos_seleccionados)
-                contador = 0
-
-                ruta_trayectorias = os.path.join(carpeta_video, "trayectorias_stats", "trayectorias.json")
+        ruta_trayectorias = os.path.join(carpeta_video, "trayectorias_stats", "trayectorias.json")
 
 
-                # Aquí se llamarán las funciones específicas de estadísticos
-                if "recalcular_trayectorias" in estadisticos_seleccionados:
-                    estado.emitir_etapa("Calculando: Trayectorias")
-                    print(f"[INFO] Procesando trayectorias para {nombre_video}...")
-                    procesar_trayectorias_video(
-                        carpeta_video=carpeta_video,
-                        dimensiones_entrada=dimensiones_entrada,
-                        estado=estado
-                    )
-                    contador += 1
-                    estado.emitir_progreso(int((contador / total_descriptores) * 100))
+        # Aquí se llamarán las funciones específicas de estadísticos
+        if "recalcular_trayectorias" in estadisticos_seleccionados:
+            estado.emitir_etapa("Calculando: Trayectorias")
+            print(f"[INFO] Procesando trayectorias para {nombre_video}...")
+            procesar_trayectorias_video(
+                carpeta_video=carpeta_video,
+                dimensiones_entrada=dimensiones_entrada,
+                estado=estado
+            )
+            contador += 1
+            estado.emitir_progreso(int((contador / total_descriptores) * 100))
 
-                if "longitud_media_trayectorias" in estadisticos_seleccionados:
-                    estado.emitir_etapa("Calculando: Longitudes continuas de trayectorias")
-                    print(f"[INFO] Calculando longitudes medias para {nombre_video}...")
-                    salida_longitudes = os.path.join(carpeta_video, "trayectorias_stats", "longitudes_continuas.json")
-                    calcular_longitudes_continuas(
-                        ruta_trayectorias_json=ruta_trayectorias,
-                        salida_path=salida_longitudes,
-                        estado=estado,
-                        umbral_px=50  # configurable si lo deseas
-                    )
-                    contador += 1
-                    estado.emitir_progreso(int((contador / total_descriptores) * 100))
+        if "longitud_media_trayectorias" in estadisticos_seleccionados:
+            estado.emitir_etapa("Calculando: Longitudes continuas de trayectorias")
+            print(f"[INFO] Calculando longitudes medias para {nombre_video}...")
+            salida_longitudes = os.path.join(carpeta_video, "trayectorias_stats", "longitudes_continuas.json")
+            calcular_longitudes_continuas(
+                ruta_trayectorias_json=ruta_trayectorias,
+                salida_path=salida_longitudes,
+                estado=estado,
+                umbral_px=50  # configurable si lo deseas
+            )
+            contador += 1
+            estado.emitir_progreso(int((contador / total_descriptores) * 100))
 
-                if "histograma_distancias" in estadisticos_seleccionados:
-                    estado.emitir_etapa("Calculando: Histograma de distancias entre puntos")
-                    print(f"[INFO] Calculando histograma de distancias para {nombre_video}...")
-                    salida_histograma = os.path.join(carpeta_video, "trayectorias_stats", "histograma_distancias.json")
-                    calcular_histograma_distancias(
-                        ruta_trayectorias_json=ruta_trayectorias,
-                        salida_path=salida_histograma,
-                        estado=estado,
-                        bin_size=10  
-                    )
+        if "histograma_distancias" in estadisticos_seleccionados:
+            estado.emitir_etapa("Calculando: Histograma de distancias entre puntos")
+            print(f"[INFO] Calculando histograma de distancias para {nombre_video}...")
+            salida_histograma = os.path.join(carpeta_video, "trayectorias_stats", "histograma_distancias.json")
+            calcular_histograma_distancias(
+                ruta_trayectorias_json=ruta_trayectorias,
+                salida_path=salida_histograma,
+                estado=estado,
+                bin_size=10  
+            )
 
-                    contador += 1
-                    estado.emitir_progreso(int((contador / total_descriptores) * 100))
+            contador += 1
+            estado.emitir_progreso(int((contador / total_descriptores) * 100))
 
-                if "velocidades" in estadisticos_seleccionados:
-                    estado.emitir_etapa("Calculando: Velocidades por ID y frame")
-                    print(f"[INFO] Calculando velocidades para {nombre_video}...")
-                    salida_velocidades = os.path.join(carpeta_video, "trayectorias_stats", "velocidades.json")
-                    calcular_velocidades(
-                        ruta_trayectorias_json=ruta_trayectorias,
-                        salida_path=salida_velocidades,
-                        estado=estado,
-                        umbral_px=50
-                    )
-                    contador += 1
-                    estado.emitir_progreso(int((contador / total_descriptores) * 100))
+        if "velocidades" in estadisticos_seleccionados:
+            estado.emitir_etapa("Calculando: Velocidades por ID y frame")
+            print(f"[INFO] Calculando velocidades para {nombre_video}...")
+            salida_velocidades = os.path.join(carpeta_video, "trayectorias_stats", "velocidades.json")
+            calcular_velocidades(
+                ruta_trayectorias_json=ruta_trayectorias,
+                salida_path=salida_velocidades,
+                estado=estado,
+                umbral_px=50
+            )
+            contador += 1
+            estado.emitir_progreso(int((contador / total_descriptores) * 100))
 
-                if "dispersion_velocidad" in estadisticos_seleccionados:
-                    estado.emitir_etapa("Calculando: Dispersión de velocidades por frame")
-                    print(f"[INFO] Calculando dispersión de velocidades para {nombre_video}...")
-                    ruta_velocidades = os.path.join(carpeta_video, "trayectorias_stats", "velocidades.json")
-                    salida_dispersion = os.path.join(carpeta_video, "trayectorias_stats", "dispersion_velocidades.json")
-                    calcular_dispersion_velocidades(
-                        ruta_velocidades_json=ruta_velocidades,
-                        salida_path=salida_dispersion,
-                        estado=estado
-                    )
-                    contador += 1
-                    estado.emitir_progreso(int((contador / total_descriptores) * 100))
+        if "dispersion_velocidad" in estadisticos_seleccionados:
+            estado.emitir_etapa("Calculando: Dispersión de velocidades por frame")
+            print(f"[INFO] Calculando dispersión de velocidades para {nombre_video}...")
+            ruta_velocidades = os.path.join(carpeta_video, "trayectorias_stats", "velocidades.json")
+            salida_dispersion = os.path.join(carpeta_video, "trayectorias_stats", "dispersion_velocidades.json")
+            calcular_dispersion_velocidades(
+                ruta_velocidades_json=ruta_velocidades,
+                salida_path=salida_dispersion,
+                estado=estado
+            )
+            contador += 1
+            estado.emitir_progreso(int((contador / total_descriptores) * 100))
 
-                if "cambio_angular" in estadisticos_seleccionados:
-                    estado.emitir_etapa("Calculando: Cambio angular de dirección")
-                    print(f"[INFO] Calculando cambio angular de dirección para {nombre_video}...")
+        if "cambio_angular" in estadisticos_seleccionados:
+            estado.emitir_etapa("Calculando: Cambio angular de dirección")
+            print(f"[INFO] Calculando cambio angular de dirección para {nombre_video}...")
+            salida_angulos = os.path.join(carpeta_video, "trayectorias_stats", "angulo_cambio_direccion.json")
+            calcular_cambio_angular(
+                ruta_trayectorias_json=ruta_trayectorias,
+                salida_path=salida_angulos,
+                estado=estado,
+                umbral_px=50
+            )
+            contador += 1
+            estado.emitir_progreso(int((contador / total_descriptores) * 100))
 
-                    ruta_trayectorias = os.path.join(carpeta_video, "trayectorias_stats", "trayectorias.json")
-                    salida_angulos = os.path.join(carpeta_video, "trayectorias_stats", "angulo_cambio_direccion.json")
+        if "persistencia_espacial" in estadisticos_seleccionados:
+            estado.emitir_etapa("Calculando: Persistencia espacial por ID")
+            print(f"[INFO] Calculando persistencia espacial para {nombre_video}...")
+            salida_persistencia = os.path.join(carpeta_video, "trayectorias_stats", "persistencia_espacial.json")
+            calcular_persistencia_espacial(
+                ruta_trayectorias_json=ruta_trayectorias,
+                salida_path=salida_persistencia,
+                estado=estado,
+                output_dims=dimensiones_entrada,
+                grid_size=5
+            )
+            contador += 1
+            estado.emitir_progreso(int((contador / total_descriptores) * 100))
 
-                    calcular_cambio_angular(
-                        ruta_trayectorias_json=ruta_trayectorias,
-                        salida_path=salida_angulos,
-                        estado=estado,
-                        umbral_px=50
-                    )
-
-                    contador += 1
-                    estado.emitir_progreso(int((contador / total_descriptores) * 100))
-
-                if "persistencia_espacial" in estadisticos_seleccionados:
-                    estado.emitir_etapa("Calculando: Persistencia espacial por ID")
-                    print(f"[INFO] Calculando persistencia espacial para {nombre_video}...")
-                    salida_persistencia = os.path.join(carpeta_video, "trayectorias_stats", "persistencia_espacial.json")
-                    calcular_persistencia_espacial(
-                        ruta_trayectorias_json=ruta_trayectorias,
-                        salida_path=salida_persistencia,
-                        estado=estado,
-                        output_dims=dimensiones_entrada,
-                        grid_size=5
-                    )
-                    contador += 1
-                    estado.emitir_progreso(int((contador / total_descriptores) * 100))
-
-                if "direccion" in estadisticos_seleccionados:
-                    estado.emitir_etapa("Calculando: Direcciones")
-                    print(f"[INFO] Calculando direcciones para {nombre_video}...")
-                    salida_direcciones = os.path.join(carpeta_video, "trayectorias_stats", "direcciones.json")
-                    calcular_direcciones(
-                        ruta_trayectorias_json=ruta_trayectorias,
-                        salida_path=salida_direcciones,
-                        estado=estado
-                    )
-                    contador += 1
-                    estado.emitir_progreso(int((contador / total_descriptores) * 100))
+        if "direccion" in estadisticos_seleccionados:
+            estado.emitir_etapa("Calculando: Direcciones")
+            print(f"[INFO] Calculando direcciones para {nombre_video}...")
+            salida_direcciones = os.path.join(carpeta_video, "trayectorias_stats", "direcciones.json")
+            calcular_direcciones(
+                ruta_trayectorias_json=ruta_trayectorias,
+                salida_path=salida_direcciones,
+                estado=estado
+            )
+            contador += 1
+            estado.emitir_progreso(int((contador / total_descriptores) * 100))
 
 
 
 
-                # ...más llamadas según se implementen...
+        # ...más llamadas según se implementen...
 
-                estado.emitir_video_progreso(idx)
-
-            except Exception as e:
-                estado.emitir_error(f"[Error] en {carpeta_video}: {str(e)}")
 
         estado.emitir_etapa("Cálculo completado para estadísticas de trayectorias.")
 

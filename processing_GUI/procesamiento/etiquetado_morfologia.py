@@ -152,7 +152,7 @@ def extraer_frames(video_path, output_folder, resize_enabled=False, resize_dims=
 def calcular_mediana_segmento(input_path, percentil, cache_path, lotes, id_proc, q):
     try:
         for idx, grupo in lotes:
-            print(f"[Proceso {id_proc}] Procesando grupo {idx} con {len(grupo)} imágenes")
+            #print(f"[Proceso {id_proc}] Procesando grupo {idx} con {len(grupo)} imágenes")
             imgs = [cv2.imread(os.path.join(input_path, img)) for img in grupo]
             imgs = [im for im in imgs if im is not None]
             if imgs:
@@ -166,7 +166,7 @@ def calcular_mediana_segmento(input_path, percentil, cache_path, lotes, id_proc,
                     os.remove(os.path.join(input_path, img))
                 except Exception as e:
                     print(f"[WARNING] No se pudo eliminar {img}: {e}")
-            print(f"Eliminadas imágenes del grupo {idx} en proceso {id_proc}")
+            #print(f"Eliminadas imágenes del grupo {idx} en proceso {id_proc}")
             q.put(1)
     except Exception as e:
         print(f"[Proceso {id_proc}] Error al procesar grupo: {e}")
@@ -212,7 +212,7 @@ def calcular_fondo_percentil(input_path, imagenes, percentil, grupo_size, num_pr
     # Esperar a que todos los procesos terminen
     for p in procesos: p.join()
 
-    print(f"[DEBUG] Procesos terminados, calculando fondo final...")
+    #print(f"[DEBUG] Procesos terminados, calculando fondo final...")
     medianas = [cv2.imread(os.path.join(cache_path, f))
                 for f in os.listdir(cache_path) if f.endswith(".jpg")]
     medianas = [m for m in medianas if m is not None]
@@ -221,9 +221,9 @@ def calcular_fondo_percentil(input_path, imagenes, percentil, grupo_size, num_pr
             np.percentile(np.array(medianas[i:i+grupo_size]), percentil, axis=0).astype(np.uint8)
             for i in range(0, len(medianas), grupo_size)
         ]
-    print(f"[DEBUG] Número de medianas calculadas: {len(medianas)}")
+    #print(f"[DEBUG] Número de medianas calculadas: {len(medianas)}")
     fondo_final = np.percentile(np.array(medianas), percentil, axis=0).astype(np.uint8)
-    print(f"[DEBUG] Fondo final calculado")
+    #print(f"[DEBUG] Fondo final calculado")
     shutil.rmtree(cache_path)
     shutil.rmtree(input_path, ignore_errors=True)
     return fondo_final
@@ -235,16 +235,16 @@ def aplicar_pipeline_morfologica(mask, pipeline):
         kx, ky = paso["kernel"]
         kernel = np.ones((kx, ky), np.uint8)
         if op == "apertura":
-            print(f"[DEBUG] Aplicando apertura con kernel {kernel.shape}")
+            #print(f"[DEBUG] Aplicando apertura con kernel {kernel.shape}")
             mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
         elif op == "cierre":
-            print(f"[DEBUG] Aplicando cierre con kernel {kernel.shape}")
+            #print(f"[DEBUG] Aplicando cierre con kernel {kernel.shape}")
             mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
         elif op == "dilatacion":
-            print(f"[DEBUG] Aplicando dilatación con kernel {kernel.shape}")
+            #print(f"[DEBUG] Aplicando dilatación con kernel {kernel.shape}")
             mask = cv2.dilate(mask, kernel)
         elif op == "erosion":
-            print(f"[DEBUG] Aplicando erosión con kernel {kernel.shape}")
+            #print(f"[DEBUG] Aplicando erosión con kernel {kernel.shape}")
             mask = cv2.erode(mask, kernel)
     return mask
 
@@ -282,7 +282,7 @@ def procesar_segmento(imagenes, input_path, output_path, fondo, pipeline, q , ou
             # Resto del pipeline
             mask = aplicar_pipeline_morfologica(mask, pipeline_proc)
 
-            print(f"[Segmento] Procesando máscara para {img_name} en proceso PID {os.getpid()}: resize")
+            #print(f"[Segmento] Procesando máscara para {img_name} en proceso PID {os.getpid()}: resize")
             mask = cv2.resize(mask, output_dims, interpolation=cv2.INTER_NEAREST)
 
             
@@ -317,7 +317,7 @@ def procesar_videos_con_morfologia(video_fondo, videos_dir, output_dir,
                     estado.emitir_error("No se pudo leer la imagen de fondo proporcionada.")
                 return
             if resize_enabled:
-                print(f"[DEBUG] Redimensionando fondo a {resize_dims}")
+                #print(f"[DEBUG] Redimensionando fondo a {resize_dims}")
                 fondo = cv2.resize(fondo, resize_dims)
             # Redimensionar el fondo si no coincide con el tamaño del vídeo
             # alto_fondo, ancho_fondo = fondo.shape[:2]
@@ -335,13 +335,13 @@ def procesar_videos_con_morfologia(video_fondo, videos_dir, output_dir,
 
             fondo_frames_dir = "processing_GUI/procesamiento/cache/__frames_fondo_tmp__"
             os.makedirs(fondo_frames_dir, exist_ok=True)
-            print(f"[DEBUG] Extrayendo frames del vídeo de fondo: {video_fondo}")
+            #print(f"[DEBUG] Extrayendo frames del vídeo de fondo: {video_fondo}")
             if estado:
                 estado.emitir_etapa("Extrayendo frames del vídeo de fondo...")
                 estado.emitir_progreso(0)
             fondo_imagenes = extraer_frames(video_fondo, fondo_frames_dir, resize_enabled, resize_dims, bbox_recorte, estado)
-            print(f"[DEBUG] Número de imágenes extraídas del fondo: {len(fondo_imagenes)}")
-            print(f"[DEBUG] Calculando fondo usando percentil {percentil} con grupo size {grupo_size} y {nucleos} núcleos")
+            #print(f"[DEBUG] Número de imágenes extraídas del fondo: {len(fondo_imagenes)}")
+            #print(f"[DEBUG] Calculando fondo usando percentil {percentil} con grupo size {grupo_size} y {nucleos} núcleos")
             if estado:
                 estado.emitir_etapa("Calculando fondo usando percentil...")
                 estado.emitir_progreso(0)
@@ -352,7 +352,7 @@ def procesar_videos_con_morfologia(video_fondo, videos_dir, output_dir,
             )
 
         if fondo is not None:
-            print(f"[DEBUG] Fondo shape antes del recorte: {fondo.shape}")
+            #print(f"[DEBUG] Fondo shape antes del recorte: {fondo.shape}")
             os.makedirs(output_dir, exist_ok=True)
             cv2.imwrite(os.path.join(output_dir, "fondo_calculado.jpg"), fondo)
             # os.makedirs(output_dir, exist_ok=True)
@@ -402,7 +402,8 @@ def procesar_videos_con_morfologia(video_fondo, videos_dir, output_dir,
             }
             with open(os.path.join(output_masks, "output_dims.json"), "w") as f:
                 json.dump(output_dims_info, f, indent=4)
-            imagenes = extraer_frames(video_path, frames_dir, resize_enabled, resize_dims, bbox_recorte)
+            estado.emitir_etapa(f"Extrayendo frames de {video}...")
+            imagenes = extraer_frames(video_path, frames_dir, resize_enabled, resize_dims, bbox_recorte, estado)
             if not imagenes:
                 if estado:
                     estado.emitir_error("No se encontraron imágenes para procesar.")
@@ -411,6 +412,9 @@ def procesar_videos_con_morfologia(video_fondo, videos_dir, output_dir,
             segment_size = len(imagenes) // nucleos
             q = multiprocessing.Queue()
             procesos = []
+            if estado:
+                estado.emitir_etapa("Aplicando morfología...")
+                estado.emitir_progreso(0)
             for j in range(nucleos):
                 ini = j * segment_size
                 fin = (j + 1) * segment_size if j < nucleos - 1 else len(imagenes)
