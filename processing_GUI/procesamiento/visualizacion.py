@@ -34,17 +34,21 @@ def decode_rle(shape, rle):
     return flat.reshape(shape)
 
 
-
+# # Cargar recorte desde archivos JSON, si existen
 def cargar_recorte(carpeta_base):
     json_path_mask = os.path.join(carpeta_base, "masks_rle", "recorte_morphology.json")
-    json_path_bbox = os.path.join(carpeta_base, "bbox", "recorte_bbox.json")
+    json_path_bbox = os.path.join(carpeta_base, "bbox", "recorte_yolo.json")
+    print(f"Buscando recortes en: {json_path_mask} y {json_path_bbox}")
+    recorte_mask = None
+    recorte_bbox = None
     if os.path.exists(json_path_mask):
         with open(json_path_mask, 'r') as f:
-            return json.load(f)
-    if os.path.exists(json_path_bbox):
+            recorte_mask = json.load(f)
+    elif os.path.exists(json_path_bbox):
         with open(json_path_bbox, 'r') as f:
-            return json.load(f)
-    return None
+            recorte_bbox = json.load(f)
+    return recorte_mask, recorte_bbox
+    
 
 def aplicar_recorte(frame, recorte):
     if not recorte:

@@ -6,8 +6,8 @@ from tqdm import tqdm
 from multiprocessing import Pool, cpu_count, current_process
 
 # ==== CONFIGURA AQUÍ LA CARPETA DE TRABAJO Y NÚCLEOS ====
-carpeta_trabajo = "/home/gmanty/code/AnemoNAS/07-12-23/0926-1752"
-num_procesos = 14
+carpeta_trabajo = "/home/gms/AnemoNAS/POR_DIA/08-12-2023/"
+num_procesos = 3
 # =========================================================
 
 def encode_rle(mask_bin):

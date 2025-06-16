@@ -25,7 +25,9 @@ class VentanaResultadoVisualizacion(QMainWindow):
         self.frame_actual_leido = -1
         self.frame_cache = None
 
-        self.recorte = cargar_recorte(self.carpeta_base)
+        self.recorte_mask, self.recorte_bbox = cargar_recorte(self.carpeta_base)
+        print(f"Recorte máscara: {self.recorte_mask}")
+        print(f"Recorte bbox: {self.recorte_bbox}")
 
         self.timer = QTimer()
         self.timer.timeout.connect(self.mostrar_siguiente_frame)
@@ -99,15 +101,15 @@ class VentanaResultadoVisualizacion(QMainWindow):
         if self.tipo_visualizacion == "máscaras":
             mask = cargar_mascara(self.carpeta_base, self.frame_idx)
             if mask is not None:
-                if self.recorte:
-                    frame = aplicar_recorte(frame, self.recorte)
+                if self.recorte_mask:
+                    frame = aplicar_recorte(frame, self.recorte_mask)
                     output_dims = cargar_output_dims(os.path.join(self.carpeta_base, "masks_rle"))
                     frame = cv2.resize(frame, output_dims, interpolation=cv2.INTER_LINEAR)
                 frame = superponer_mascara(frame, mask)
 
         elif self.tipo_visualizacion == "bboxes":
-            if self.recorte:
-                frame = aplicar_recorte(frame, self.recorte)
+            if self.recorte_bbox:
+                frame = aplicar_recorte(frame, self.recorte_bbox)
                 output_dims = cargar_output_dims(os.path.join(self.carpeta_base, "bbox"))
                 frame = cv2.resize(frame, output_dims, interpolation=cv2.INTER_LINEAR)
             bboxes = cargar_bboxes_yolo(self.carpeta_base, self.frame_idx)
