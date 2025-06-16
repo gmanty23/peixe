@@ -2047,7 +2047,7 @@ def procesar_bbox_stats(path_video, estadisticos_seleccionados, num_procesos, di
                 salida_path=ruta_salida_exploracion,
                 dimensiones_entrada=dimensiones_entrada,
                 grid_size=25,
-                ventana_frames=128,
+                ventana_frames=64,
                 estado=estado
             )
             contador += 1

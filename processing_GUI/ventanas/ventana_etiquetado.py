@@ -855,7 +855,7 @@ class VentanaEtiquetado(QMainWindow):
         resize_layout = QHBoxLayout()
         resize_label = QLabel("Tamaño (imgsz):")
         self.yolo_resize_combo = QComboBox()
-        self.yolo_resize_combo.addItems(["1024", "640"])
+        self.yolo_resize_combo.addItems(["640", "1024"])
         resize_layout.addWidget(resize_label)
         resize_layout.addWidget(self.yolo_resize_combo)
         config_yolo_layout.addLayout(resize_layout)

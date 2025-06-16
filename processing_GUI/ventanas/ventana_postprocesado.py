@@ -13,7 +13,7 @@ class VentanaPostprocesado(QWidget):
     def __init__(self, parent=None):
         super().__init__()
         self.ventana_inicio = parent
-        self.setWindowTitle("Análisis de comportamiento")
+        self.setWindowTitle("Herramienta de Postprocesado")
         self.setMinimumSize(1200, 800)
         self.setup_ui()
         self.setup_styles()
@@ -24,7 +24,7 @@ class VentanaPostprocesado(QWidget):
         layout.setSpacing(15)
 
         # Título
-        titulo = QLabel("Análisis de comportamiento de peces")
+        titulo = QLabel("Generación de Descriptores Estadísticos")
         titulo.setFont(QFont('Segoe UI', 18, QFont.Bold))
         titulo.setAlignment(Qt.AlignCenter)
         layout.addWidget(titulo)

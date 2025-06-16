@@ -2,15 +2,53 @@ import os
 import json
 import numpy as np
 from tqdm import tqdm
+ 
+ # ---------------------- EstadoProceso ----------------------
+class EstadoProceso:
+    def __init__(self, cola=None):
+        self.cola = cola
+        self.on_etapa = None
+        self.on_progreso = None
+        self.on_error = None
+        self.on_total_videos = None
+        self.on_video_progreso = None
 
-INPUT_DIR = "/home/gms/AnemoNAS/prueba_GUI/output_5s"  
-OUTPUT_DIR = os.path.join(INPUT_DIR, "moment_inputs")
+    def emitir_etapa(self, mensaje):
+        if self.on_etapa:
+            self.on_etapa(mensaje)
+        if self.cola:
+            self.cola.put(("etapa", mensaje))
 
+    def emitir_progreso(self, porcentaje):
+        if self.on_progreso:
+            self.on_progreso(porcentaje)
+        if self.cola:
+            self.cola.put(("progreso", porcentaje))
+
+    def emitir_error(self, mensaje):
+        if self.on_error:
+            self.on_error(mensaje)
+        if self.cola:
+            self.cola.put(("etapa", f"[ERROR] {mensaje}"))
+
+    def emitir_total_videos(self, total):
+        if self.on_total_videos:
+            self.on_total_videos(total)
+
+    def emitir_video_progreso(self, index):
+        if self.on_video_progreso:
+            self.on_video_progreso(index)
+            
+            
+            
+            
+            
 # ============================
-# FUNCIONES DE CARGA POR JSON
+# GENERAR INPUT PARA MOMENT
 # ============================
 
-# --------------BBOX STATS----------------
+
+# -------------- FUNCIONES DE CARGA BBOX STATS----------------
 def cargar_areas_blobs(path):
     # Extraemos la información del canal, solamente los nombres de las variables que van en cada canal
     info_canal = ["media_areas_blobs", "std_areas_blobs"]
@@ -185,7 +223,7 @@ def cargar_velocidad_centroide(path):
     # serie tiene shape final (1, T)
 
     return serie , info_canal
-# --------------TRAY STATS----------------
+# -------------- FUNCIONES DE CARGA TRAY STATS ----------------
 
 def cargar_velocidades(path):
     # Extraemos la información del canal, solamente los nombres de las variables que van en cada canal
@@ -361,7 +399,7 @@ def cargar_persistencia(path):
     return serie , info_canal
 
 
-# --------------MASK STATS----------------
+# -------------- FUNCIONES DE CARGA MASK STATS- ---------------
 def cargar_varianza_espacial(path):
     # Extraemos la información del canal, solamente los nombres de las variables que van en cada canal
     info_canal = ["varianza_espacial", "std_varianza_espacial"]
@@ -484,9 +522,7 @@ def cargar_velocidad_grupo(path):
     return serie,  info_canal
 
 
-# ============================
-# MAPA DESCRIPTORES
-# ============================
+# ------------------ LISTA DE DESCRIPTORES ----------------
 
 DESCRIPTORES = [
     ("bbox_stats/areas_blobs.json", cargar_areas_blobs),
@@ -514,13 +550,10 @@ DESCRIPTORES = [
     
 ]
 
-# ============================
-# PROCESAMIENTO PRINCIPAL
-# ============================
-
-def procesar_video(carpeta):
+# ------------------ PROCESAMIENTO PRINCIPAL ----------------
+def procesar_video(carpeta,input_dir, output_dir):
     try:
-        path_base = os.path.join(INPUT_DIR, carpeta)
+        path_base = os.path.join(input_dir, carpeta)
         arrays = []
         longitudes = []
         info_canales = []
@@ -550,7 +583,7 @@ def procesar_video(carpeta):
             "longitud_total": longitud_min
         }
 
-        os.makedirs(OUTPUT_DIR, exist_ok=True)
+        os.makedirs(output_dir, exist_ok=True)
         
         fps = 25
         for i, bloque in enumerate(bloques):
@@ -572,7 +605,7 @@ def procesar_video(carpeta):
             ts_fin = format_t(tiempo_fin)
 
             nombre = f"{carpeta}_{ts_inicio}_{ts_fin}.npz"
-            np.savez_compressed(os.path.join(OUTPUT_DIR, nombre), data=bloque)
+            np.savez_compressed(os.path.join(output_dir, nombre), data=bloque)
             
         
                 # ==== LOG DETALLADO ====
@@ -587,14 +620,22 @@ def procesar_video(carpeta):
     except Exception as e:
         print(f"❌ Error en {carpeta}: {e}")
 
-# ============================
-# MAIN LOOP
-# ============================
 
-def main():
-    carpetas = [d for d in os.listdir(INPUT_DIR) if os.path.isdir(os.path.join(INPUT_DIR, d))]
-    for carpeta in tqdm(sorted(carpetas)):
-        procesar_video(carpeta)
 
-if __name__ == "__main__":
-    main()
+def generar_inputs_moment(input_dir, estado = None):
+    output_dir = os.path.join(input_dir, "moment_inputs")
+    carpetas = [d for d in os.listdir(input_dir) if os.path.isdir(os.path.join(input_dir, d))]
+    
+    if estado:
+        estado.emitir_total_videos(len(carpetas))
+    
+    for idx, carpeta in enumerate(sorted(carpetas)):
+        if estado:
+            estado.emitir_etapa(f"Procesando: {carpeta}")
+        procesar_video(carpeta, input_dir, output_dir)
+        if estado:
+            estado.emitir_video_progreso(idx)
+    
+    if estado:
+        estado.emitir_etapa("✅ Generación completada.")
+
