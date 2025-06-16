@@ -3,6 +3,7 @@ import cv2
 import json
 import shutil
 from pathlib import Path
+import numpy as np
 
 
 # ---------------------- Señales de estado ----------------------
@@ -81,6 +82,8 @@ def extraer_y_preprocesar_frames_yolo(video_path, output_folder, resize, bbox_re
             print(f"Error: {e}")
         return None, None, None
 
+    
+
 # ---------------------- Padding y resize ----------------------
 def resize_con_padding(imagen, tamaño_objetivo, return_padding=False):
     h, w = imagen.shape[:2]
@@ -101,75 +104,64 @@ def resize_con_padding(imagen, tamaño_objetivo, return_padding=False):
     else:
         return imagen_padded
 
-# ---------------------- Reproyección de BBoxes ----------------------
-# def reproyectar_bboxes_a_original(lista_bboxes, imgsz, padding_info, recorte_margenes):
-#     reproyectadas = []
 
-#     pad_top = padding_info["top"]
-#     pad_left = padding_info["left"]
-#     escala = padding_info["escala"]
+# ---------------------- Elimiar bbox de zona a ignorar ----------------------
+def limpiar_bboxes_txt_con_mascara(bbox_path, estado=None):
+    # Cargar máscara
+    ruta_mascara = "processing_GUI/procesamiento/zona_no_valida.png"
+    mascara_ignorar = cv2.imread(ruta_mascara, 0)
+    if mascara_ignorar is None:
+        if estado:
+            estado.emitir_error(f"❌ Error: No se pudo cargar la máscara: {ruta_mascara}")
+        else:
+            print(f"❌ Error: No se pudo cargar la máscara: {ruta_mascara}")
+        return
+    
+    mascara_binaria = (mascara_ignorar > 0).astype(np.uint8)
+    altura_masc, ancho_masc = mascara_binaria.shape
 
-#     margen_x = recorte_margenes["left"]
-#     margen_y = recorte_margenes["top"]
+    # Localiza todos los archivos txt de bbox/labels
+    txt_paths = [f for f in Path(bbox_path).rglob("*.txt")]
+    total = len(txt_paths)
+    print(f"[INFO] Encontrados {total} archivos de etiquetas para procesar en {bbox_path}.")
 
-#     for bbox in lista_bboxes:
-#         clase, x_rel, y_rel, w_rel, h_rel = bbox
+    if estado:
+        estado.emitir_etapa("Eliminando BBoxes en zona ignorada...")
+        estado.emitir_progreso(0)
 
-#         x_c_abs = x_rel * imgsz
-#         y_c_abs = y_rel * imgsz
-#         w_abs = w_rel * imgsz
-#         h_abs = h_rel * imgsz
+    for idx, txt_path in enumerate(txt_paths):
+        with open(txt_path, "r") as f:
+            lines = f.readlines()
 
-#         x_c_sin_pad = x_c_abs - pad_left
-#         y_c_sin_pad = y_c_abs - pad_top
+        nuevas_lineas = []
+        for line in lines:
+            parts = line.strip().split()
+            if len(parts) != 5:
+                continue
+            cls_id, x1, y1, x2, y2 = map(int, parts)
 
-#         x_c_orig = x_c_sin_pad / escala
-#         y_c_orig = y_c_sin_pad / escala
-#         w_orig = w_abs / escala
-#         h_orig = h_abs / escala
+            cx = (x1 + x2) // 2
+            cy = (y1 + y2) // 2
 
-#         x1 = x_c_orig - w_orig / 2 + margen_x
-#         y1 = y_c_orig - h_orig / 2 + margen_y
-#         x2 = x_c_orig + w_orig / 2 + margen_x
-#         y2 = y_c_orig + h_orig / 2 + margen_y
+            if 0 <= cx < ancho_masc and 0 <= cy < altura_masc:
+                if mascara_binaria[cy, cx] == 0:
+                    nuevas_lineas.append(line)
+                else:
+                    print(f"[INFO] BBox eliminada en {txt_path.name} (centroide en zona ignorada).")
+            else:
+                    print(f"[INFO] BBox fuera de límites en {txt_path.name}. Eliminada por seguridad.")
 
-#         reproyectadas.append([int(clase), x1, y1, x2, y2])
+        with open(txt_path, "w") as f:
+            f.writelines(nuevas_lineas)
 
-#     return reproyectadas
+        # Emitir progreso
+        if estado:
+            porcentaje = int((idx + 1) / total * 100)
+            estado.emitir_progreso(porcentaje)
 
-# ---------------------- Procesar .txt reproyectando ----------------------
-# def reproyectar_txts_yolo(labels_dir, imgsz, padding_info, recorte_margenes, output_dir, estado=None):
-#     os.makedirs(output_dir, exist_ok=True)
-#     txt_files = [f for f in os.listdir(labels_dir) if f.endswith(".txt")]
-#     total = len(txt_files)
-#     if estado:
-#         estado.emitir_etapa("Reproyectando coordenadas...")
-#         estado.emitir_progreso(0)
-#     for i,archivo in enumerate(txt_files):
-#         if not archivo.endswith(".txt"):
-#             continue
+    if estado:
+        estado.emitir_etapa("Eliminación completada.")
 
-#         ruta_txt = os.path.join(labels_dir, archivo)
-#         with open(ruta_txt, "r") as f:
-#             lineas = f.readlines()
-
-#         bboxes = []
-#         for linea in lineas:
-#             partes = linea.strip().split()
-#             if len(partes) != 5:
-#                 continue
-#             bbox = [int(partes[0])] + list(map(float, partes[1:]))
-#             bboxes.append(bbox)
-
-#         reproyectadas = reproyectar_bboxes_a_original(bboxes, imgsz, padding_info, recorte_margenes)
-#         if estado:
-#             porcentaje = int((i + 1) / total * 100)
-#             estado.emitir_progreso(porcentaje)
-
-#         with open(os.path.join(output_dir, archivo), "w") as f_out:
-#             for bbox in reproyectadas:
-#                 clase, x1, y1, x2, y2 = bbox
-#                 f_out.write(f"{clase} {x1:.2f} {y1:.2f} {x2:.2f} {y2:.2f}\n")
 
 # ---------------------- Pipeline principal ----------------------
 def procesar_yolo(video_path, output_path, resize_dim, bbox_recorte=None, estado=None, output_dims=(1920,1080)):

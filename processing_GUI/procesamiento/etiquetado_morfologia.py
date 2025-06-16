@@ -248,7 +248,7 @@ def aplicar_pipeline_morfologica(mask, pipeline):
             mask = cv2.erode(mask, kernel)
     return mask
 
-def procesar_segmento(imagenes, input_path, output_path, fondo, pipeline, q , output_dims):
+def procesar_segmento(imagenes, input_path, output_path, fondo, pipeline, q , output_dims, zona_no_valida):
     try:
         os.makedirs(output_path, exist_ok=True)
         for img_name in imagenes:
@@ -284,9 +284,27 @@ def procesar_segmento(imagenes, input_path, output_path, fondo, pipeline, q , ou
 
             #print(f"[Segmento] Procesando máscara para {img_name} en proceso PID {os.getpid()}: resize")
             mask = cv2.resize(mask, output_dims, interpolation=cv2.INTER_NEAREST)
-
+            # cv2.imwrite(os.path.join(output_path, img_name), mask)
             
-            cv2.imwrite(os.path.join(output_path, img_name), mask)
+            # Guardar la máscara codificada como RLE y guardada como .npz
+            _, binaria = cv2.threshold(mask, 127, 1, cv2.THRESH_BINARY)
+
+            # Si hay una zona no válida, aplicar la máscara
+            if zona_no_valida is not None:
+                binaria = binaria * (zona_no_valida == 0).astype(np.uint8)
+
+            pixels = binaria.flatten()
+            pixels = np.concatenate([[0], pixels, [0]])
+            changes = np.where(pixels[1:] != pixels[:-1])[0] + 1
+            runs = changes[1::2] - changes[::2]
+            rle = np.empty(changes.size, dtype=int)
+            rle[::2] = changes[::2] + 1  # 1-based indexing
+            rle[1::2] = runs
+            shape = np.array(binaria.shape, dtype=int)
+
+            nombre_salida = os.path.splitext(img_name)[0] + ".npz"
+            ruta_salida = os.path.join(output_path, nombre_salida)
+            np.savez_compressed(ruta_salida, shape=shape, rle=rle)
             #print(f"[Segmento] Guardada máscara: {img_name}")
             q.put(1)
         #print(f"[Segmento] Proceso {os.getpid()} terminado")
@@ -378,8 +396,12 @@ def procesar_videos_con_morfologia(video_fondo, videos_dir, output_dir,
             video_path = os.path.join(videos_dir, video)
             frames_dir = os.path.join("processing_GUI/procesamiento/cache/__frames_tmp__", Path(video).stem)
             carpeta_video = os.path.join(output_dir, Path(video).stem)
+            zona_no_valida = cv2.imread("processing_GUI/procesamiento/zona_no_valida.png", 0)
+            if zona_no_valida is None:
+                print("⚠️ Advertencia: zona_no_valida.png no encontrada. Continuando sin máscara de ignorar.")
+
             os.makedirs(carpeta_video, exist_ok=True)
-            output_masks = os.path.join(carpeta_video, "masks")
+            output_masks = os.path.join(carpeta_video, "masks_rle")
             if bbox_recorte:
                 os.makedirs(output_masks, exist_ok=True)
                 h_img, w_img = fondo.shape[:2]
@@ -420,9 +442,9 @@ def procesar_videos_con_morfologia(video_fondo, videos_dir, output_dir,
                 fin = (j + 1) * segment_size if j < nucleos - 1 else len(imagenes)
                 segmento = imagenes[ini:fin]
                 p = multiprocessing.Process(
-                    target=procesar_segmento,
-                    args=(segmento, frames_dir, output_masks, fondo, pipeline, q, output_dims) 
-                )
+                target=procesar_segmento,
+                args=(segmento, frames_dir, output_masks, fondo, pipeline, q, output_dims, zona_no_valida)
+            )
                 procesos.append(p)
                 p.start()
 

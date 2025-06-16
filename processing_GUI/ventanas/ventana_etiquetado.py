@@ -11,7 +11,7 @@ import shutil
 import json
 from processing_GUI.procesamiento.etiquetado_morfologia import procesar_videos_con_morfologia, EstadoProceso
 import cv2
-from processing_GUI.procesamiento.etiquetado_yolo import procesar_yolo
+from processing_GUI.procesamiento.etiquetado_yolo import procesar_yolo, limpiar_bboxes_txt_con_mascara
 
 class WorkerThreadMorfología(QThread):
     progreso = Signal(int)
@@ -911,6 +911,8 @@ class VentanaEtiquetado(QMainWindow):
                     f_abs.write("\n".join(abs_lines))
 
 
+            # Eliminar las bbox fuera de la pecera
+            limpiar_bboxes_txt_con_mascara(labels_dir, estado)
 
 
             # Finalizar este vídeo

@@ -101,7 +101,7 @@ class VentanaResultadoVisualizacion(QMainWindow):
             if mask is not None:
                 if self.recorte:
                     frame = aplicar_recorte(frame, self.recorte)
-                    output_dims = cargar_output_dims(os.path.join(self.carpeta_base, "masks"))
+                    output_dims = cargar_output_dims(os.path.join(self.carpeta_base, "masks_rle"))
                     frame = cv2.resize(frame, output_dims, interpolation=cv2.INTER_LINEAR)
                 frame = superponer_mascara(frame, mask)
 

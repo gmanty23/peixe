@@ -312,17 +312,17 @@ class VentanaPostprocesado(QWidget):
                 dims = json.load(f)
             dimensiones_entrada_yolo = dims["output_dims"]
         except Exception:
-            QMessageBox.critical(self, "Error", "No se pudo leer output_dims.json")
+            QMessageBox.critical(self, "Error", "No se pudo leer output_dims_yolo.json")
             return
         try:
             subcarpetas = [os.path.join(carpeta, d) for d in os.listdir(carpeta)
                         if os.path.isdir(os.path.join(carpeta, d))]
-            output_dims_path_morph = os.path.join(subcarpetas[0], "masks", "output_dims.json")
+            output_dims_path_morph = os.path.join(subcarpetas[0], "masks_rle", "output_dims.json")
             with open(output_dims_path_morph, "r") as f:
                 dims = json.load(f)
             dimensiones_entrada_morph = dims["output_dims"]
         except Exception:
-            QMessageBox.critical(self, "Error", "No se pudo leer output_dims.json")
+            QMessageBox.critical(self, "Error", "No se pudo leer output_dims_masks.json")
             return
 
         # Llamada al procesado de bbox
@@ -361,7 +361,7 @@ class VentanaPostprocesado(QWidget):
 
         self.barra_progreso_etapas.setMaximum(len(videos))
         self.barra_progreso_etapas.setValue(0)
-
+        self.etapa_actual.setText("Procesando vídeos...")
         activos = []
 
         def lanzar_video(idx, path_video):

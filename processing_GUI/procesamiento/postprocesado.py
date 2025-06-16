@@ -598,14 +598,30 @@ def calcular_velocidad_centroide(ruta_centroide_json, salida_path, estado, n_bin
 
 # ---------------------- ESTADÍSTICOS DERIVADOS DE MÁSCARAS ----------------------
 
+# ---------------------- Función auxiliar: decodificar máscara RLE ----------------------
+def decode_rle(shape, rle):
+    starts = rle[::2] - 1
+    lengths = rle[1::2]
+    ends = starts + lengths
+    flat = np.zeros(shape[0] * shape[1], dtype=np.uint8)
+    for s, e in zip(starts, ends):
+        flat[s:e] = 255
+    return flat.reshape(shape)
+
+
 # ---------------------- Estadístico Máscaras: Histograma de Densidad ----------------------
 def procesar_grid_worker(grid_size, archivos, ruta_masks, ancho, alto):
     filas, columnas = grid_size, grid_size
     resultado_por_frame = {}
 
     for nombre_archivo in archivos:
+        # ruta = os.path.join(ruta_masks, nombre_archivo)
+        # mask = cv2.imread(ruta, cv2.IMREAD_GRAYSCALE)
         ruta = os.path.join(ruta_masks, nombre_archivo)
-        mask = cv2.imread(ruta, cv2.IMREAD_GRAYSCALE)
+        data = np.load(ruta)
+        shape = tuple(data['shape'])
+        rle = data['rle']
+        mask = decode_rle(shape, rle)
         if mask is None:
             continue
 
@@ -636,10 +652,10 @@ def procesar_grid_worker(grid_size, archivos, ruta_masks, ancho, alto):
 
     return (grid_size, resultado_por_frame)
 
-# ---------------------- Estadístico Máscaras: Histograma de Densidad por Grid ----------------------
 def calcular_histograma_densidad(ruta_masks, salida_dir, dimensiones_entrada, estado, tamanos_grid=[5, 10, 15, 20], num_procesos=4):
     try:
-        archivos = sorted([f for f in os.listdir(ruta_masks) if f.endswith(('.png', '.jpg'))])
+        # archivos = sorted([f for f in os.listdir(ruta_masks) if f.endswith(('.png', '.jpg'))])
+        archivos = sorted([f for f in os.listdir(ruta_masks) if f.endswith('.npz')])
         total_frames = len(archivos)
         if total_frames == 0:
             estado.emitir_etapa("[Aviso] No se encontraron máscaras.")
@@ -670,7 +686,9 @@ def calcular_histograma_densidad(ruta_masks, salida_dir, dimensiones_entrada, es
 # ---------------------- Estadístico Máscaras: Centro de masa global ----------------------
 def calcular_centro_masa_mascaras(ruta_masks, salida_path, dimensiones_entrada, estado):
     try:
-        archivos = sorted([f for f in os.listdir(ruta_masks) if f.endswith(('.png', '.jpg'))])
+        # archivos = sorted([f for f in os.listdir(ruta_masks) if f.endswith(('.png', '.jpg'))])
+        archivos = sorted([f for f in os.listdir(ruta_masks) if f.endswith('.npz')])
+
         total_frames = len(archivos)
         if total_frames == 0:
             estado.emitir_etapa("[Aviso] No se encontraron máscaras.")
@@ -680,8 +698,14 @@ def calcular_centro_masa_mascaras(ruta_masks, salida_path, dimensiones_entrada, 
         resultado_por_frame = {}
 
         for idx, nombre_archivo in enumerate(archivos):
+            # ruta = os.path.join(ruta_masks, nombre_archivo)
+            # mask = cv2.imread(ruta, cv2.IMREAD_GRAYSCALE)
             ruta = os.path.join(ruta_masks, nombre_archivo)
-            mask = cv2.imread(ruta, cv2.IMREAD_GRAYSCALE)
+            data = np.load(ruta)
+            shape = tuple(data['shape'])
+            rle = data['rle']
+            mask = decode_rle(shape, rle)
+
             if mask is None:
                 continue
 
@@ -714,7 +738,9 @@ def calcular_centro_masa_mascaras(ruta_masks, salida_path, dimensiones_entrada, 
 # ---------------------- Estadístico Máscaras: Varianza Espacial ----------------------
 def calcular_varianza_espacial(ruta_masks, salida_path, dimensiones_entrada, estado):
     try:
-        archivos = sorted([f for f in os.listdir(ruta_masks) if f.endswith(('.png', '.jpg'))])
+        # archivos = sorted([f for f in os.listdir(ruta_masks) if f.endswith(('.png', '.jpg'))])
+        archivos = sorted([f for f in os.listdir(ruta_masks) if f.endswith('.npz')])
+
         total_frames = len(archivos)
         if total_frames == 0:
             estado.emitir_etapa("[Aviso] No se encontraron máscaras.")
@@ -724,8 +750,13 @@ def calcular_varianza_espacial(ruta_masks, salida_path, dimensiones_entrada, est
         resultado_por_frame = {}
 
         for idx, nombre_archivo in enumerate(archivos):
+            # ruta = os.path.join(ruta_masks, nombre_archivo)
+            # mask = cv2.imread(ruta, cv2.IMREAD_GRAYSCALE)
             ruta = os.path.join(ruta_masks, nombre_archivo)
-            mask = cv2.imread(ruta, cv2.IMREAD_GRAYSCALE)
+            data = np.load(ruta)
+            shape = tuple(data['shape'])
+            rle = data['rle']
+            mask = decode_rle(shape, rle)
             if mask is None:
                 continue
 
@@ -768,7 +799,8 @@ def calcular_varianza_espacial(ruta_masks, salida_path, dimensiones_entrada, est
 # ---------------------- Estadístico Máscaras: Velocidad Grupo ----------------------
 def calcular_velocidad_grupo(ruta_masks, salida_path, dimensiones_entrada, estado):
     try:
-        archivos = sorted([f for f in os.listdir(ruta_masks) if f.endswith(('.png', '.jpg'))])
+        # archivos = sorted([f for f in os.listdir(ruta_masks) if f.endswith(('.png', '.jpg'))])
+        archivos = sorted([f for f in os.listdir(ruta_masks) if f.endswith('.npz')])
         total_frames = len(archivos)
         if total_frames < 2:
             estado.emitir_etapa("[Aviso] Se necesitan al menos 2 frames para calcular velocidad.")
@@ -786,8 +818,16 @@ def calcular_velocidad_grupo(ruta_masks, salida_path, dimensiones_entrada, estad
             ruta_anterior = os.path.join(ruta_masks, nombre_anterior)
             ruta_actual = os.path.join(ruta_masks, nombre_actual)
 
-            mask_prev = cv2.imread(ruta_anterior, cv2.IMREAD_GRAYSCALE)
-            mask_now = cv2.imread(ruta_actual, cv2.IMREAD_GRAYSCALE)
+            # mask_prev = cv2.imread(ruta_anterior, cv2.IMREAD_GRAYSCALE)
+            data_prev = np.load(ruta_anterior)
+            shape = tuple(data_prev['shape'])
+            rle = data_prev['rle']
+            mask_prev = decode_rle(shape, rle)
+            # mask_now = cv2.imread(ruta_actual, cv2.IMREAD_GRAYSCALE)
+            data_now = np.load(ruta_actual)
+            shape = tuple(data_now['shape'])
+            rle = data_now['rle']
+            mask_now = decode_rle(shape, rle)
 
             if mask_prev is None or mask_now is None:
                 continue
@@ -855,8 +895,13 @@ def worker_persistencia(args):
     activos = [[0 for _ in range(columnas)] for _ in range(filas)]
 
     for nombre_archivo in archivos:
+        # ruta = os.path.join(ruta_masks, nombre_archivo)
+        # mask = cv2.imread(ruta, cv2.IMREAD_GRAYSCALE)
         ruta = os.path.join(ruta_masks, nombre_archivo)
-        mask = cv2.imread(ruta, cv2.IMREAD_GRAYSCALE)
+        data = np.load(ruta)
+        shape = tuple(data['shape'])
+        rle = data['rle']
+        mask = decode_rle(shape, rle)
         if mask is None:
             continue
 
@@ -911,7 +956,8 @@ def worker_persistencia(args):
 def calcular_persistencia_espacial_por_ventana(ruta_masks, salida_dir, dimensiones_entrada, estado,
                                                tamanos_ventana=[64, 128, 256, 512], grid_size=20, num_procesos=4):
     try:
-        archivos = sorted([f for f in os.listdir(ruta_masks) if f.endswith(('.png', '.jpg'))])
+        # archivos = sorted([f for f in os.listdir(ruta_masks) if f.endswith(('.png', '.jpg'))])
+        archivos = sorted([f for f in os.listdir(ruta_masks) if f.endswith('.npz')])
         total_frames = len(archivos)
         if total_frames == 0:
             estado.emitir_etapa("[Aviso] No se encontraron máscaras.")
@@ -953,8 +999,13 @@ def worker_dispersion(args):
     celdas_ocupadas = np.zeros((filas, columnas), dtype=np.uint8)
 
     for nombre_archivo in archivos:
+        # ruta = os.path.join(ruta_masks, nombre_archivo)
+        # mask = cv2.imread(ruta, cv2.IMREAD_GRAYSCALE)
         ruta = os.path.join(ruta_masks, nombre_archivo)
-        mask = cv2.imread(ruta, cv2.IMREAD_GRAYSCALE)
+        data = np.load(ruta)
+        shape = tuple(data['shape'])
+        rle = data['rle']
+        mask = decode_rle(shape, rle)
         if mask is None:
             continue
 
@@ -981,7 +1032,8 @@ def worker_dispersion(args):
 def calcular_dispersion_temporal_por_ventana(ruta_masks, salida_dir, dimensiones_entrada, estado,
                                              tamanos_ventana=[64, 128, 256, 512], grid_size=10, num_procesos=4):
     try:
-        archivos = sorted([f for f in os.listdir(ruta_masks) if f.endswith(('.png', '.jpg'))])
+        # archivos = sorted([f for f in os.listdir(ruta_masks) if f.endswith(('.png', '.jpg'))])
+        archivos = sorted([f for f in os.listdir(ruta_masks) if f.endswith('.npz')])
         total_frames = len(archivos)
         if total_frames == 0:
             estado.emitir_etapa("[Aviso] No se encontraron máscaras.")
@@ -1024,8 +1076,13 @@ def worker_entropia_binaria(args):
     total_frames = len(archivos)
 
     for nombre_archivo in archivos:
+        # ruta = os.path.join(ruta_masks, nombre_archivo)
+        # mask = cv2.imread(ruta, cv2.IMREAD_GRAYSCALE)
         ruta = os.path.join(ruta_masks, nombre_archivo)
-        mask = cv2.imread(ruta, cv2.IMREAD_GRAYSCALE)
+        data = np.load(ruta)
+        shape = tuple(data['shape'])
+        rle = data['rle']
+        mask = decode_rle(shape, rle)
         if mask is None:
             continue
 
@@ -1052,7 +1109,8 @@ def worker_entropia_binaria(args):
 def calcular_entropia_binaria_por_ventana(ruta_masks, salida_dir, dimensiones_entrada, estado,
                                           tamanos_ventana=[64, 128, 256, 512], grid_size=30, num_procesos=4):
     try:
-        archivos = sorted([f for f in os.listdir(ruta_masks) if f.endswith(('.png', '.jpg'))])
+        # archivos = sorted([f for f in os.listdir(ruta_masks) if f.endswith(('.png', '.jpg'))])
+        archivos = sorted([f for f in os.listdir(ruta_masks) if f.endswith('.npz')])
         total_frames = len(archivos)
         if total_frames == 0:
             estado.emitir_etapa("[Aviso] No se encontraron máscaras.")
@@ -2056,7 +2114,7 @@ def procesar_mask_stats(path_video, estadisticos_seleccionados, num_procesos, di
 
 
         estado.emitir_progreso(0)
-        ruta_masks = os.path.join(carpeta_video, "masks")
+        ruta_masks = os.path.join(carpeta_video, "masks_rle")
         if not os.path.exists(ruta_masks):
             estado.emitir_etapa(f"[Aviso] {nombre_video} no tiene máscaras.")
 

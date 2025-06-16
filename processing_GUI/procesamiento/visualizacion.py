@@ -9,14 +9,34 @@ def cargar_frame_de_video(cap, frame_idx):
     ret, frame = cap.read()
     return frame if ret else None
 
+# def cargar_mascara(carpeta_base, frame_idx):
+#     ruta = os.path.join(carpeta_base, "masks", f"frame_{frame_idx:05d}.jpg")
+#     if os.path.exists(ruta):
+#         return cv2.imread(ruta, cv2.IMREAD_GRAYSCALE)
+#     return None
+
 def cargar_mascara(carpeta_base, frame_idx):
-    ruta = os.path.join(carpeta_base, "masks", f"frame_{frame_idx:05d}.jpg")
+    ruta = os.path.join(carpeta_base, "masks_rle", f"frame_{frame_idx:05d}.npz")
     if os.path.exists(ruta):
-        return cv2.imread(ruta, cv2.IMREAD_GRAYSCALE)
+        data = np.load(ruta)
+        shape = tuple(data['shape'])
+        rle = data['rle']
+        return decode_rle(shape, rle)
     return None
 
+def decode_rle(shape, rle):
+    starts = rle[::2] - 1
+    lengths = rle[1::2]
+    ends = starts + lengths
+    flat = np.zeros(shape[0] * shape[1], dtype=np.uint8)
+    for s, e in zip(starts, ends):
+        flat[s:e] = 255
+    return flat.reshape(shape)
+
+
+
 def cargar_recorte(carpeta_base):
-    json_path_mask = os.path.join(carpeta_base, "masks", "recorte_morphology.json")
+    json_path_mask = os.path.join(carpeta_base, "masks_rle", "recorte_morphology.json")
     json_path_bbox = os.path.join(carpeta_base, "bbox", "recorte_bbox.json")
     if os.path.exists(json_path_mask):
         with open(json_path_mask, 'r') as f:
@@ -35,6 +55,7 @@ def aplicar_recorte(frame, recorte):
 def superponer_mascara(frame, mask, alpha=0.5, color=(0, 255, 0)):
     if mask.shape[:2] != frame.shape[:2]:
         print("[AVISO] Dimensiones de la máscara no coinciden con el frame. Se omite superposición.")
+        print(f"Frame shape: {frame.shape}, Mask shape: {mask.shape}")
         return frame
     overlay = frame.copy()
     overlay[mask > 0] = (overlay[mask > 0] * (1 - alpha) + alpha * np.array(color)).astype('uint8')
