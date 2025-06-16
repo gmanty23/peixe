@@ -101,15 +101,15 @@ def calcular_distribucion_espacial(ruta_centroides_json, salida_dir, dimensiones
             nombre_archivo = f"distribucion_espacial_{grid_size}.json"
             ruta_out = os.path.join(salida_dir, nombre_archivo)
             with open(ruta_out, "w") as f_out:
-                json.dump({"grid_size": [grid_size, grid_size], "histograma": histograma}, f_out, indent=2)
+                json.dump({"grid_size": [grid_size[0], grid_size[1]], "histograma": histograma}, f_out, indent=2)
 
-            estado.emitir_etapa(f"Grid {grid_size}x{grid_size} completado")
+            estado.emitir_etapa(f"Grid {grid_size[0]}x{grid_size[1]} completado")
 
     except Exception as e:
         estado.emitir_error(f"Error en calcular_distribucion_espacial: {str(e)}")
 
 def procesar_grid(grid_size, centroides_dict, ancho, alto):
-    filas, cols = grid_size, grid_size
+    filas, cols = grid_size
     resultado_por_frame = {}
 
     for frame_key, centroides in centroides_dict.items():
@@ -611,7 +611,7 @@ def decode_rle(shape, rle):
 
 # ---------------------- Estadístico Máscaras: Histograma de Densidad ----------------------
 def procesar_grid_worker(grid_size, archivos, ruta_masks, ancho, alto):
-    filas, columnas = grid_size, grid_size
+    filas, columnas = grid_size
     resultado_por_frame = {}
 
     for nombre_archivo in archivos:
@@ -652,7 +652,7 @@ def procesar_grid_worker(grid_size, archivos, ruta_masks, ancho, alto):
 
     return (grid_size, resultado_por_frame)
 
-def calcular_histograma_densidad(ruta_masks, salida_dir, dimensiones_entrada, estado, tamanos_grid=[5, 10, 15, 20], num_procesos=4):
+def calcular_histograma_densidad(ruta_masks, salida_dir, dimensiones_entrada, estado, tamanos_grid=[(5, 5), (10, 10), (15, 15), (20, 20), (2, 4)], num_procesos=4):
     try:
         # archivos = sorted([f for f in os.listdir(ruta_masks) if f.endswith(('.png', '.jpg'))])
         archivos = sorted([f for f in os.listdir(ruta_masks) if f.endswith('.npz')])
@@ -674,11 +674,11 @@ def calcular_histograma_densidad(ruta_masks, salida_dir, dimensiones_entrada, es
             ruta_out = os.path.join(salida_dir, nombre_archivo)
             with open(ruta_out, "w") as f_out:
                 json.dump({
-                    "grid_size": [grid_size, grid_size],
+                    "grid_size": [grid_size[0], grid_size[1]],
                     "densidad": resultado
                 }, f_out, indent=2)
 
-            estado.emitir_etapa(f"Grid {grid_size}x{grid_size} completado")
+            estado.emitir_etapa(f"Grid {grid_size[0], grid_size[1]} completado")
 
     except Exception as e:
         estado.emitir_error(f"Error en calcular_histograma_densidad: {str(e)}")
@@ -1978,7 +1978,7 @@ def procesar_bbox_stats(path_video, estadisticos_seleccionados, num_procesos, di
                 ruta_centroides_json,
                 salida_stats,
                 dimensiones_entrada,
-                tamanos_grid=[5, 10, 15, 20],
+                tamanos_grid=[(5, 5), (10, 10), (15, 15), (20, 20), (2, 4)],
                 num_procesos=num_procesos,
                 estado=estado
             )
@@ -2133,7 +2133,7 @@ def procesar_mask_stats(path_video, estadisticos_seleccionados, num_procesos, di
                 salida_dir=salida_stats,
                 dimensiones_entrada=dimensiones_entrada,
                 estado=estado,
-                tamanos_grid=[5, 10, 15, 20],
+                tamanos_grid=[(5, 5), (10, 10), (15, 15), (20, 20), (2, 4)],
                 num_procesos=num_procesos
             )
             contador += 1

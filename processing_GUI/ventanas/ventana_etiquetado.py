@@ -9,7 +9,7 @@ import os
 import subprocess
 import shutil
 import json
-from processing_GUI.procesamiento.etiquetado_morfologia import procesar_videos_con_morfologia, EstadoProceso
+from processing_GUI.procesamiento.etiquetado_morfologia import procesar_videos_con_morfologia, EstadoProceso, extraer_frames
 import cv2
 from processing_GUI.procesamiento.etiquetado_yolo import procesar_yolo, limpiar_bboxes_txt_con_mascara
 
@@ -196,13 +196,10 @@ class VentanaEtiquetado(QMainWindow):
     
     def iniciar_etiquetado(self):
         method = self.method_combo.currentText()
-        workspace = self.dir_lineedit.text()
 
-        if not workspace:
-            QMessageBox.critical(self, "Error", "Debes seleccionar un directorio de trabajo")
-            return
 
         if method == "Cutie":
+            
             self.ejecutar_cutie()
             return
         elif method == "Morfología":
@@ -215,7 +212,56 @@ class VentanaEtiquetado(QMainWindow):
 
     def ejecutar_cutie(self):
         num_objects = self.num_spinbox.value()
-        workspace = self.dir_lineedit.text()
+        extraer_frames_enabled = self.extraer_imagenes_checkbox.isChecked()
+        resize_enabled = self.resize_checkbox.isChecked()
+        resize_dims = (self.resize_width_spinbox.value(), self.resize_height_spinbox.value())
+        bbox_recorte = None
+        if self.checkbox_usar_recorte.isChecked():
+            bbox_texto = self.bbox_lineedit.text()
+            if bbox_texto:
+                try:
+                    bbox_recorte = tuple(map(int, bbox_texto.strip().split(',')))
+                    assert len(bbox_recorte) == 4
+                except Exception:
+                    QMessageBox.critical(self, "Error", "La bounding box debe tener el formato: x, y, w, h")
+                    return
+            else:
+                QMessageBox.critical(self, "Error", "Has activado recorte pero no has introducido una bounding box")
+                return
+        video_path = self.video_lineedit.text()
+        if not video_path:
+            QMessageBox.critical(self, "Error", "Debes seleccionar un video a procesar")
+            return
+        video_name = os.path.splitext(os.path.basename(video_path))[0]
+        carpeta_trabajo = os.path.dirname(video_path)
+        workspace = os.path.join(carpeta_trabajo, video_name, "workspace")
+        os.makedirs(workspace, exist_ok=True)
+        frames_dir = os.path.join(workspace, "images")
+        os.makedirs(frames_dir, exist_ok=True)
+        
+        # Crear el jsond e output_dims
+        output_dims_path = os.path.join(workspace, "output_dims.json")
+        with open(output_dims_path, 'w') as f:
+            json.dump(resize_dims, f)
+            
+        # Inicializar estado
+        self.barra_progreso.setValue(0)
+        self.barra_progreso.setVisible(True)
+        self.etiqueta_etapa.setVisible(True)
+        self.barra_progreso_videos.setVisible(True)
+        self.etiqueta_videos.setVisible(True)
+
+        estado = EstadoProceso()
+        estado.on_etapa = self.etiqueta_etapa.setText
+        estado.on_progreso = self.barra_progreso.setValue
+        estado.on_error = lambda msg: QMessageBox.critical(self, "Error", msg)
+        estado.on_total_videos = lambda total: self.barra_progreso_videos.setMaximum(total)
+        estado.on_video_progreso = self.barra_progreso_videos.setValue
+        
+        # Extraer frames del video
+        if extraer_frames_enabled:
+            estado.on_etapa("Extrayendo frames del video...")
+            imagenes = extraer_frames(video_path, frames_dir, resize_enabled, resize_dims, bbox_recorte, estado)
         reset_flag = self.reset_checkbox.isChecked()
         mask_guardadas_path = os.path.join(workspace, "masks_guardadas")
         if reset_flag:
@@ -323,14 +369,69 @@ class VentanaEtiquetado(QMainWindow):
         """Crea el layout para los parámetros de Cutie"""
         cutie_widget = QWidget()
         cutie_layout = QVBoxLayout(cutie_widget)
+        
+        # Grupo de configuración de extracción
+        extract_group = QGroupBox("Configuración de extracción")
+        extract_layout = QVBoxLayout()
+        extract_group.setLayout(extract_layout)
+        
+        # Checkbox para extraer imagenes o no
+        self.extraer_imagenes_checkbox = QCheckBox("Extraer imágenes del video")
+        self.extraer_imagenes_checkbox.setChecked(True)
+        self.extraer_imagenes_checkbox.stateChanged.connect(self.actualizar_estado_dependientes)
 
+        extract_layout.addWidget(self.extraer_imagenes_checkbox)
+        
+        # Seleccion de recorte
+        self.checkbox_usar_recorte = QCheckBox("Aplicar recorte")
+        self.checkbox_usar_recorte.setChecked(True)
+        self.checkbox_usar_recorte.stateChanged.connect(self.actualizar_estado_dependientes)
+
+        extract_layout.addWidget(self.checkbox_usar_recorte)
+        
+        bbox_layout = QHBoxLayout()
+        bbox_label = QLabel("Bounding box (x, y, w, h):")
+        self.bbox_lineedit = QLineEdit()
+        self.bbox_lineedit.setPlaceholderText("Ej: 100, 200, 300, 400")
+        self.bbox_lineedit.setText("550, 960, 2225, 1186")
+        self.bbox_lineedit.setEnabled(True)
+        
+        bbox_layout.addWidget(bbox_label)
+        bbox_layout.addWidget(self.bbox_lineedit)
+        extract_layout.addLayout(bbox_layout)
+        
+        # Redimensionado de imágenes
+        resize_layout = QHBoxLayout()
+        self.resize_checkbox = QCheckBox("Activar redimensionado (ancho x alto)")
+        self.resize_checkbox.setChecked(True)
+        self.resize_checkbox.stateChanged.connect(self.actualizar_estado_dependientes)
+
+        self.resize_width_spinbox = QSpinBox()
+        self.resize_height_spinbox = QSpinBox()
+        self.resize_width_spinbox.setRange(100, 10000)
+        self.resize_width_spinbox.setValue(1920)
+        self.resize_height_spinbox.setRange(100, 10000)
+        self.resize_height_spinbox.setValue(1080)
+        resize_layout.addWidget(self.resize_checkbox)
+        resize_layout.addWidget(self.resize_width_spinbox)
+        resize_layout.addWidget(QLabel("×"))
+        resize_layout.addWidget(self.resize_height_spinbox)
+        extract_layout.addLayout(resize_layout)
+        
+        cutie_layout.addWidget(extract_group)
+
+        #Grupo de configuración de Cutie
+        config_cutie_group = QGroupBox("Configuración de Cutie")
+        config_cutie_layout = QVBoxLayout()
+        config_cutie_group.setLayout(config_cutie_layout)
+        
         # Sección para el reinicio del contador de máscaras guardadas
         reset_layout = QHBoxLayout()
         reset_label = QLabel("Reiniciar contador de máscaras guardadas:")
         self.reset_checkbox = QCheckBox()
         reset_layout.addWidget(reset_label)
         reset_layout.addWidget(self.reset_checkbox)
-        cutie_layout.addLayout(reset_layout)
+        config_cutie_layout.addLayout(reset_layout)
         
         
         # Sección para el número de objetos
@@ -341,10 +442,27 @@ class VentanaEtiquetado(QMainWindow):
         self.num_spinbox.setValue(3)
         num_layout.addWidget(num_label)
         num_layout.addWidget(self.num_spinbox)
-        cutie_layout.addLayout(num_layout)
+        config_cutie_layout.addLayout(num_layout)
         
-        # Sección para el directorio
-        cutie_layout.addLayout(self.create_directory_selector())
+        cutie_layout.addWidget(config_cutie_group)
+
+        
+        # Sección para el video a procesar
+        video_layout = QHBoxLayout()
+        video_label = QLabel("Video a procesar:")
+        self.video_lineedit = QLineEdit()
+        self.video_lineedit.setPlaceholderText("Selecciona un video...")
+        video_button = QPushButton("Examinar...")
+        video_button.clicked.connect(self.select_video)
+        video_layout.addWidget(video_label)
+        video_layout.addWidget(self.video_lineedit)
+        video_layout.addWidget(video_button)
+        cutie_layout.addLayout(video_layout)
+        
+        self.actualizar_estado_dependientes()
+
+        
+
 
         return cutie_widget   
 
@@ -408,7 +526,12 @@ class VentanaEtiquetado(QMainWindow):
         morphology_widget = QWidget()
         morphology_layout = QVBoxLayout(morphology_widget)
 
-        # Selección del tamaño de fondo
+        # Grupo de configuración de extracción
+        extract_group = QGroupBox("Configuración de extracción")
+        extract_layout = QVBoxLayout()
+        extract_group.setLayout(extract_layout)
+        
+        # Selección del tamaño de salida
         output_resize_layout = QHBoxLayout()
         output_resize_label = QLabel("Tamaño de salida (ancho x alto):")
         self.output_width_spinbox = QSpinBox()
@@ -421,12 +544,12 @@ class VentanaEtiquetado(QMainWindow):
         output_resize_layout.addWidget(self.output_width_spinbox)
         output_resize_layout.addWidget(QLabel("×"))
         output_resize_layout.addWidget(self.output_height_spinbox)
-        morphology_layout.addLayout(output_resize_layout)
+        extract_layout.addLayout(output_resize_layout)
 
         # Seleccion de recorte
         self.checkbox_usar_recorte = QCheckBox("Aplicar recorte")
-        self.checkbox_usar_recorte.setChecked(False)
-        morphology_layout.addWidget(self.checkbox_usar_recorte)
+        self.checkbox_usar_recorte.setChecked(True)
+        extract_layout.addWidget(self.checkbox_usar_recorte)
 
         bbox_layout = QHBoxLayout()
         bbox_label = QLabel("Bounding box (x, y, w, h):")
@@ -437,7 +560,7 @@ class VentanaEtiquetado(QMainWindow):
 
         bbox_layout.addWidget(bbox_label)
         bbox_layout.addWidget(self.bbox_lineedit)
-        morphology_layout.addLayout(bbox_layout)
+        extract_layout.addLayout(bbox_layout)
 
         # Selección de núcleos
         cores_layout = QHBoxLayout()
@@ -447,10 +570,9 @@ class VentanaEtiquetado(QMainWindow):
         self.cores_spinbox.setValue(7)
         cores_layout.addWidget(cores_label)
         cores_layout.addWidget(self.cores_spinbox)
-        morphology_layout.addLayout(cores_layout)
+        extract_layout.addLayout(cores_layout)
 
         # Redimensionado de imágenes
-        resize_group = QGroupBox("Redimensionar imágenes (opcional)")
         resize_layout = QHBoxLayout()
 
         self.resize_checkbox = QCheckBox("Activar redimensionado")
@@ -469,8 +591,9 @@ class VentanaEtiquetado(QMainWindow):
         resize_layout.addWidget(QLabel("Alto:"))
         resize_layout.addWidget(self.resize_height_spinbox)
 
-        resize_group.setLayout(resize_layout)
-        morphology_layout.addWidget(resize_group)
+        extract_layout.addLayout(resize_layout)
+        
+        morphology_layout.addWidget(extract_group)
 
         # Selección de los parámetros de cálculo de fondo
         fondo_group = QGroupBox("Cálculo de fondo")
@@ -510,7 +633,6 @@ class VentanaEtiquetado(QMainWindow):
         morphology_layout.addWidget(fondo_group)
 
         # Selección de las caracterización del umbral
-        umbral_group = QGroupBox("Umbral")
         umbral_layout = QVBoxLayout()
 
         self.umbral_combo = QComboBox()
@@ -552,8 +674,7 @@ class VentanaEtiquetado(QMainWindow):
         umbral_layout.addWidget(self.umbral_global_widget)
         umbral_layout.addWidget(self.umbral_adaptativo_widget)
 
-        umbral_group.setLayout(umbral_layout)
-        morphology_layout.addWidget(umbral_group)
+        fondo_layout.addLayout(umbral_layout)
         self.actualizar_parametros_umbral("Global")
 
         # Creación pipeline operaciones morfológicas
@@ -688,6 +809,11 @@ class VentanaEtiquetado(QMainWindow):
         """Crea el layout para los parámetros de YOLOv8"""
         yolo_widget = QWidget()
         yolo_layout = QVBoxLayout(yolo_widget)
+        
+        # Grupo de configuración de extracción
+        extract_group = QGroupBox("Configuración de extracción")
+        extract_layout = QVBoxLayout()
+        extract_group.setLayout(extract_layout)
 
         # Selección del tamaño de salida
         output_resize_layout = QHBoxLayout()
@@ -702,12 +828,12 @@ class VentanaEtiquetado(QMainWindow):
         output_resize_layout.addWidget(self.yolo_output_width_spinbox)
         output_resize_layout.addWidget(QLabel("×"))
         output_resize_layout.addWidget(self.yolo_output_height_spinbox)
-        yolo_layout.addLayout(output_resize_layout)
+        extract_layout.addLayout(output_resize_layout)
 
         # Recorte manual
         self.yolo_checkbox_usar_recorte = QCheckBox("Aplicar recorte")
-        self.yolo_checkbox_usar_recorte.setChecked(False)
-        yolo_layout.addWidget(self.yolo_checkbox_usar_recorte)
+        self.yolo_checkbox_usar_recorte.setChecked(True)
+        extract_layout.addWidget(self.yolo_checkbox_usar_recorte)
 
         yolo_bbox_layout = QHBoxLayout()
         yolo_bbox_label = QLabel("Bounding box (x, y, w, h):")
@@ -716,16 +842,25 @@ class VentanaEtiquetado(QMainWindow):
         self.yolo_bbox_lineedit.setText("550, 960, 2225, 1186")
         yolo_bbox_layout.addWidget(yolo_bbox_label)
         yolo_bbox_layout.addWidget(self.yolo_bbox_lineedit)
-        yolo_layout.addLayout(yolo_bbox_layout)
+        extract_layout.addLayout(yolo_bbox_layout)
+        
+        yolo_layout.addWidget(extract_group)
+        
+        #Grupo de configuración de YOLOv8
+        config_yolo_group = QGroupBox("Configuración de YOLOv8")
+        config_yolo_layout = QVBoxLayout()
+        config_yolo_group.setLayout(config_yolo_layout)
 
         # Tamaño de imagen
         resize_layout = QHBoxLayout()
         resize_label = QLabel("Tamaño (imgsz):")
         self.yolo_resize_combo = QComboBox()
-        self.yolo_resize_combo.addItems(["640", "1024"])
+        self.yolo_resize_combo.addItems(["1024", "640"])
         resize_layout.addWidget(resize_label)
         resize_layout.addWidget(self.yolo_resize_combo)
-        yolo_layout.addLayout(resize_layout)
+        config_yolo_layout.addLayout(resize_layout)
+        
+        yolo_layout.addWidget(config_yolo_group)
 
         # Directorio de salida
         yolo_layout.addLayout(self.create_directory_selector())
@@ -963,5 +1098,32 @@ class VentanaEtiquetado(QMainWindow):
             return ventana_roi.roi
         else:
             return None
+        
+    def select_video(self):
+        """Abre un diálogo para seleccionar un video y actualiza el campo de texto"""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Seleccionar video",
+            str(Path.home()),
+            "Videos (*.mp4 *.avi *.mov)"
+        )
+        if file_path:
+            self.video_lineedit.setText(file_path)
+            return True
+        else:
+            QMessageBox.warning(self, "Selección de Video", "No se seleccionó ningún video.")
+            return False
+        
+    def actualizar_estado_dependientes(self):
+        # print("Entro aqui")
+        extraer = self.extraer_imagenes_checkbox.isChecked()
+        self.checkbox_usar_recorte.setEnabled(extraer)
+        usar_recorte = extraer and self.checkbox_usar_recorte.isChecked()
+        self.bbox_lineedit.setEnabled(usar_recorte)
+
+        self.resize_checkbox.setEnabled(extraer)
+        activar_resize = extraer and self.resize_checkbox.isChecked()
+        self.resize_width_spinbox.setEnabled(activar_resize)
+        self.resize_height_spinbox.setEnabled(activar_resize)
 
         

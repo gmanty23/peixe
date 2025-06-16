@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import QWidget, QPushButton, QVBoxLayout, QLabel
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
-from processing_GUI.ventanas.ventana_preprocesado import VentanaPreprocesado  
+# from processing_GUI.ventanas.ventana_preprocesado import VentanaPreprocesado  
 from processing_GUI.ventanas.ventana_etiquetado import VentanaEtiquetado
 from processing_GUI.ventanas.ventana_visualizacion import VentanaVisualizacion  
 from processing_GUI.ventanas.ventana_postprocesado import VentanaPostprocesado
@@ -55,18 +55,18 @@ class VentanaInicio(QWidget):
         self.titulo.setAlignment(Qt.AlignCenter)
         
         # Crear los botones
-        self.boton_preprocesado = QPushButton("Preprocesado", self)
+        # self.boton_preprocesado = QPushButton("Preprocesado", self)
         self.boton_etiquetado = QPushButton("Etiquetado", self)
         self.boton_postprocesado = QPushButton("Postprocesado", self)
         self.boton_visualizacion = QPushButton("Visualización", self)
         
         # Configurar cursor de mano al pasar por encima de todos los botones
-        for boton in [self.boton_preprocesado, self.boton_etiquetado, self.boton_postprocesado]:
+        for boton in [self.boton_etiquetado, self.boton_postprocesado]:
             boton.setCursor(Qt.PointingHandCursor)
         
         
         # Conecatar los botones a las funciones
-        self.boton_preprocesado.clicked.connect(self.preprocesado)
+        # self.boton_preprocesado.clicked.connect(self.preprocesado)
         self.boton_etiquetado.clicked.connect(self.etiquetado)
         self.boton_postprocesado.clicked.connect(self.postprocesado)
         self.boton_visualizacion.clicked.connect(self.visualizacion)
@@ -77,7 +77,7 @@ class VentanaInicio(QWidget):
         layout.addWidget(self.logo)
         layout.addWidget(self.titulo)
         layout.addStretch(1) # Espacio entre el título y los botones
-        layout.addWidget(self.boton_preprocesado, alignment=Qt.AlignCenter)
+        # layout.addWidget(self.boton_preprocesado, alignment=Qt.AlignCenter)
         layout.addWidget(self.boton_etiquetado, alignment=Qt.AlignCenter)
         layout.addWidget(self.boton_postprocesado, alignment=Qt.AlignCenter)
         layout.addWidget(self.boton_visualizacion, alignment=Qt.AlignCenter)
@@ -85,10 +85,10 @@ class VentanaInicio(QWidget):
         
         self.setLayout(layout)
         
-    def preprocesado(self):
-        self.ventana_preprocesado = VentanaPreprocesado(parent=self)
-        self.ventana_preprocesado.show()
-        #self.hide()
+    # def preprocesado(self):
+    #     self.ventana_preprocesado = VentanaPreprocesado(parent=self)
+    #     self.ventana_preprocesado.show()
+    #     #self.hide()
         
     def postprocesado(self):
         self.ventana_postprocesado = VentanaPostprocesado(parent=self)
