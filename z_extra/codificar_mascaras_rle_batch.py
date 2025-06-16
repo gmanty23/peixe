@@ -6,7 +6,7 @@ from tqdm import tqdm
 from multiprocessing import Pool, cpu_count, current_process
 
 # ==== CONFIGURA AQUÍ LA CARPETA DE TRABAJO Y NÚCLEOS ====
-carpeta_trabajo = "/home/gms/AnemoNAS/POR_DIA/08-12-2023/"
+carpeta_trabajo = "/home/gms/AnemoNAS/prueba_GUI/"
 num_procesos = 3
 # =========================================================
 

@@ -25,7 +25,7 @@ class VentanaVisualizacion(QWidget):
         super().__init__()
         self.ventana_inicio = parent
         self.ventana_resultado = None
-        self.setWindowTitle("Visualización de Resultados")
+        self.setWindowTitle("Herramienta de Visualización de Resultados")
         self.setMinimumSize(600, 800)
         self.setup_ui()
         self.setup_styles()
@@ -247,6 +247,13 @@ class VentanaVisualizacion(QWidget):
                 border: none;
                 border-radius: 4px;
                 padding: 8px 16px;
+            }
+            QGroupBox {
+                font-weight: bold;
+                border: 1px solid #ddd;
+                border-radius: 5px;
+                margin-top: 10px;
+                padding-top: 15px;
             }
             QPushButton:hover {
                 background-color: #2980b9;

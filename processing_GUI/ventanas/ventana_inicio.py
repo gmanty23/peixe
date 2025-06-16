@@ -1,10 +1,11 @@
 from PySide6.QtWidgets import QWidget, QPushButton, QVBoxLayout, QLabel
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
-from processing_GUI.ventanas.ventana_preprocesado import VentanaPreprocesado  
+# from processing_GUI.ventanas.ventana_preprocesado import VentanaPreprocesado  
 from processing_GUI.ventanas.ventana_etiquetado import VentanaEtiquetado
 from processing_GUI.ventanas.ventana_visualizacion import VentanaVisualizacion  
 from processing_GUI.ventanas.ventana_postprocesado import VentanaPostprocesado
+from processing_GUI.ventanas.ventana_analisis import VentanaAnalisis
 
 
 class VentanaInicio(QWidget):
@@ -12,7 +13,7 @@ class VentanaInicio(QWidget):
         super().__init__()
         
         # Configuración inicial de la ventana: título y tamaño
-        self.setWindowTitle("Herramienta de Etiquetado de Peces")
+        self.setWindowTitle("Sistema de Automatización de Estudios Etológicos")
         self.setMinimumSize(400, 300)
         
         # Estilo CSS para darle los colores
@@ -55,21 +56,23 @@ class VentanaInicio(QWidget):
         self.titulo.setAlignment(Qt.AlignCenter)
         
         # Crear los botones
-        self.boton_preprocesado = QPushButton("Preprocesado", self)
+        # self.boton_preprocesado = QPushButton("Preprocesado", self)
         self.boton_etiquetado = QPushButton("Etiquetado", self)
         self.boton_postprocesado = QPushButton("Postprocesado", self)
         self.boton_visualizacion = QPushButton("Visualización", self)
+        self.boton_analisis = QPushButton("Análisis", self)
         
         # Configurar cursor de mano al pasar por encima de todos los botones
-        for boton in [self.boton_preprocesado, self.boton_etiquetado, self.boton_postprocesado]:
+        for boton in [self.boton_etiquetado, self.boton_postprocesado]:
             boton.setCursor(Qt.PointingHandCursor)
         
         
         # Conecatar los botones a las funciones
-        self.boton_preprocesado.clicked.connect(self.preprocesado)
+        # self.boton_preprocesado.clicked.connect(self.preprocesado)
         self.boton_etiquetado.clicked.connect(self.etiquetado)
         self.boton_postprocesado.clicked.connect(self.postprocesado)
         self.boton_visualizacion.clicked.connect(self.visualizacion)
+        self.boton_analisis.clicked.connect(self.analisis)
         
         # Layout principal
         layout = QVBoxLayout()
@@ -77,18 +80,19 @@ class VentanaInicio(QWidget):
         layout.addWidget(self.logo)
         layout.addWidget(self.titulo)
         layout.addStretch(1) # Espacio entre el título y los botones
-        layout.addWidget(self.boton_preprocesado, alignment=Qt.AlignCenter)
+        # layout.addWidget(self.boton_preprocesado, alignment=Qt.AlignCenter)
         layout.addWidget(self.boton_etiquetado, alignment=Qt.AlignCenter)
         layout.addWidget(self.boton_postprocesado, alignment=Qt.AlignCenter)
         layout.addWidget(self.boton_visualizacion, alignment=Qt.AlignCenter)
+        layout.addWidget(self.boton_analisis, alignment=Qt.AlignCenter)
         layout.addStretch(2) # Espacio entre los botones y el final de la ventana
         
         self.setLayout(layout)
         
-    def preprocesado(self):
-        self.ventana_preprocesado = VentanaPreprocesado(parent=self)
-        self.ventana_preprocesado.show()
-        #self.hide()
+    # def preprocesado(self):
+    #     self.ventana_preprocesado = VentanaPreprocesado(parent=self)
+    #     self.ventana_preprocesado.show()
+    #     #self.hide()
         
     def postprocesado(self):
         self.ventana_postprocesado = VentanaPostprocesado(parent=self)
@@ -106,6 +110,10 @@ class VentanaInicio(QWidget):
         self.ventana_visualizacion.show()
         #self.hide()
 
+    def analisis(self):
+        self.ventana_analisis = VentanaAnalisis(parent=self)
+        self.ventana_analisis.show()
+        #self.hide()
 
 
 

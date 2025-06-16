@@ -44,7 +44,7 @@ def cargar_recorte(carpeta_base):
     if os.path.exists(json_path_mask):
         with open(json_path_mask, 'r') as f:
             recorte_mask = json.load(f)
-    elif os.path.exists(json_path_bbox):
+    if os.path.exists(json_path_bbox):
         with open(json_path_bbox, 'r') as f:
             recorte_bbox = json.load(f)
     return recorte_mask, recorte_bbox
