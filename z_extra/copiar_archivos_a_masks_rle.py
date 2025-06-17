@@ -3,9 +3,9 @@ import shutil
 from tqdm import tqdm
 
 # VARIABLES DE ENTRADA
-archivo1 = "/media/gms/EXTERNAL_USB/output_dims.json"
-archivo2 = "/media/gms/EXTERNAL_USB/recorte_morphology.json"
-directorio_raiz = "/media/gms/EXTERNAL_USB/06-12-23/0926-1852"
+archivo1 = "/home/gmanty/code/AnemoNAS/06-12-23/0926-1852-listo/USCL2-101113-101613/masks_rle/output_dims.json"
+archivo2 = "/home/gmanty/code/AnemoNAS/06-12-23/0926-1852-listo/USCL2-101113-101613/masks_rle/recorte_morphology.json"
+directorio_raiz = "/home/gmanty/code/AnemoNAS/07-12-23/1812-2002/"
 
 def buscar_masks_rle(directorio_raiz):
     """
