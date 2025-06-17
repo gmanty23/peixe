@@ -98,7 +98,7 @@ def calcular_distribucion_espacial(ruta_centroides_json, salida_dir, dimensiones
             resultados = pool.starmap(procesar_grid, tareas)
 
         for grid_size, histograma in resultados:
-            nombre_archivo = f"distribucion_espacial_{grid_size}.json"
+            nombre_archivo = f"distribucion_espacial_{grid_size[0]}_{grid_size[1]}.json"
             ruta_out = os.path.join(salida_dir, nombre_archivo)
             with open(ruta_out, "w") as f_out:
                 json.dump({"grid_size": [grid_size[0], grid_size[1]], "histograma": histograma}, f_out, indent=2)
@@ -670,7 +670,7 @@ def calcular_histograma_densidad(ruta_masks, salida_dir, dimensiones_entrada, es
             resultados = pool.starmap(procesar_grid_worker, tareas)
 
         for grid_size, resultado in resultados:
-            nombre_archivo = f"densidad_{grid_size}.json"
+            nombre_archivo = f"densidad_{grid_size[0]}_{grid_size[1]}.json"
             ruta_out = os.path.join(salida_dir, nombre_archivo)
             with open(ruta_out, "w") as f_out:
                 json.dump({

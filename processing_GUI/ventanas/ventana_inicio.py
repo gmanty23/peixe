@@ -59,8 +59,8 @@ class VentanaInicio(QWidget):
         # self.boton_preprocesado = QPushButton("Preprocesado", self)
         self.boton_etiquetado = QPushButton("Etiquetado", self)
         self.boton_postprocesado = QPushButton("Postprocesado", self)
-        self.boton_visualizacion = QPushButton("Visualización", self)
         self.boton_analisis = QPushButton("Análisis", self)
+        self.boton_visualizacion = QPushButton("Visualización", self)
         
         # Configurar cursor de mano al pasar por encima de todos los botones
         for boton in [self.boton_etiquetado, self.boton_postprocesado]:
@@ -71,8 +71,8 @@ class VentanaInicio(QWidget):
         # self.boton_preprocesado.clicked.connect(self.preprocesado)
         self.boton_etiquetado.clicked.connect(self.etiquetado)
         self.boton_postprocesado.clicked.connect(self.postprocesado)
-        self.boton_visualizacion.clicked.connect(self.visualizacion)
         self.boton_analisis.clicked.connect(self.analisis)
+        self.boton_visualizacion.clicked.connect(self.visualizacion)
         
         # Layout principal
         layout = QVBoxLayout()
@@ -83,8 +83,8 @@ class VentanaInicio(QWidget):
         # layout.addWidget(self.boton_preprocesado, alignment=Qt.AlignCenter)
         layout.addWidget(self.boton_etiquetado, alignment=Qt.AlignCenter)
         layout.addWidget(self.boton_postprocesado, alignment=Qt.AlignCenter)
-        layout.addWidget(self.boton_visualizacion, alignment=Qt.AlignCenter)
         layout.addWidget(self.boton_analisis, alignment=Qt.AlignCenter)
+        layout.addWidget(self.boton_visualizacion, alignment=Qt.AlignCenter)
         layout.addStretch(2) # Espacio entre los botones y el final de la ventana
         
         self.setLayout(layout)
@@ -105,14 +105,15 @@ class VentanaInicio(QWidget):
         self.ventana_etiquetado.show()
         #self.hide()
     
-    def visualizacion(self):
-        self.ventana_visualizacion = VentanaVisualizacion(parent=self)
-        self.ventana_visualizacion.show()
-        #self.hide()
 
     def analisis(self):
         self.ventana_analisis = VentanaAnalisis(parent=self)
         self.ventana_analisis.show()
+        #self.hide()
+
+    def visualizacion(self):
+        self.ventana_visualizacion = VentanaVisualizacion(parent=self)
+        self.ventana_visualizacion.show()
         #self.hide()
 
 
