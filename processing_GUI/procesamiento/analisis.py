@@ -2,6 +2,8 @@ import os
 import json
 import numpy as np
 from tqdm import tqdm
+
+from cutie.inference import data
  
  # ---------------------- EstadoProceso ----------------------
 class EstadoProceso:
@@ -46,6 +48,21 @@ class EstadoProceso:
 # ============================
 # GENERAR INPUT PARA MOMENT
 # ============================
+import re
+
+def ordenar_claves(d):
+    """
+    Devuelve los valores del dict ordenados por el entero contenido en las claves (que pueden tener prefijos como 'frame_0001').
+    """
+    def extraer_num(clave):
+        # Extrae el primer número que encuentre en la clave
+        match = re.search(r'\d+', clave)
+        if match:
+            return int(match.group())
+        else:
+            raise ValueError(f"No se encontró número en la clave: {clave}")
+
+    return [d[k] for k in sorted(d.keys(), key=extraer_num)]
 
 
 # -------------- FUNCIONES DE CARGA BBOX STATS----------------
@@ -58,8 +75,9 @@ def cargar_areas_blobs(path):
         data = json.load(f)
 
     # Extraemos la métrica 'densidad_media' y la de varianza 'std' de cada frame
-    media = [v["media"] for v in data.values()]
-    std = [v["std"] for v in data.values()]
+    valores_ordenados = ordenar_claves(data)
+    media = [v["media"] for v in valores_ordenados]
+    std = [v["std"] for v in valores_ordenados]
     # cada uno tiene shape (T,)
 
     # Convertimos a array numpy y unificamos como canales
@@ -80,7 +98,8 @@ def cargar_distribucion_espacial(path):
 
     # Extraemos los valores: lista de longitud T, cada uno es una matriz (5x5)
     # Dimensión intermedia: (T, 2, 4)
-    serie = [np.array(matriz).flatten() for matriz in data["histograma"].values()]
+    valores_ordenados = ordenar_claves(data["histograma"])
+    serie = [np.array(matriz).flatten() for matriz in valores_ordenados]
     
     # Convertimos a array NumPy: (T, 25)
     serie = np.array(serie, dtype=np.float32)
@@ -101,7 +120,8 @@ def cargar_coef_agrupacion(path):
         # Cada valor es un dict con múltiples métricas
 
     # Extraemos únicamente la métrica 'agrupacion' de cada frame
-    serie = [v["agrupacion"] for v in data.values()]
+    valores_ordenados = ordenar_claves(data)
+    serie = [v["agrupacion"] for v in valores_ordenados]
     # serie tiene shape (T,)
 
     # Convertimos a array numpy y añadimos eje de canal
@@ -120,8 +140,10 @@ def cargar_densidad_local(path):
         data = json.load(f)
 
     # Extraemos la métrica 'densidad_media' y la de varianza 'std' de cada frame
-    media = [v["densidad_media"] for v in data.values()]
-    std = [v["std"] for v in data.values()]
+    valores_ordenados = ordenar_claves(data)
+    media = [v["densidad_media"] for v in valores_ordenados]
+    std = [v["std"] for v in valores_ordenados]
+
     # cada uno tiene shape (T,)
 
     # Convertimos a array numpy y unificamos como canales
@@ -139,8 +161,8 @@ def cargar_entropia(path):
         data = json.load(f)
     
     # Extraemos únicamente la métrica 'entropia' de cada frame
-    serie = [v["entropia"] for v in data.values()]
-    # serie tiene shape (T,)
+    valores_ordenados = ordenar_claves(data)
+    serie = [v["entropia"] for v in valores_ordenados]   # serie tiene shape (T,)
 
     # Convertimos a array numpy y añadimos eje de canal
     serie = np.array(serie, dtype=np.float32)[None, :]
@@ -157,8 +179,9 @@ def cargar_distancia_centroide_grupal(path):
         data = json.load(f)
 
     # Extraemos la métrica 'densidad_media' y la de varianza 'std' de cada frame
-    media = [v["media"] for v in data.values()]
-    std = [v["std"] for v in data.values()]
+    valores_ordenados = ordenar_claves(data)
+    media = [v["media"] for v in valores_ordenados]
+    std = [v["std"] for v in valores_ordenados]
     # cada uno tiene shape (T,)
 
     # Convertimos a array numpy y unificamos como canales
@@ -175,8 +198,9 @@ def cargar_centroide_grupal(path):
     with open(path, "r") as f:
         data = json.load(f)
     # Extraemos la los valores de cada eje
-    x = [v[0] for v in data.values()]
-    y = [v[1] for v in data.values()]
+    valores_ordenados = ordenar_claves(data)
+    x = [v[0] for v in valores_ordenados]
+    y = [v[1] for v in valores_ordenados]
     # cada uno tiene shape (T,)
 
     # Convertimos a array numpy y unificamos como canales
@@ -192,10 +216,11 @@ def cargar_exploracion(path):
     with open(path, "r") as f:
         data = json.load(f)
     # Extraemos la métrica 'exploracion' de cada frame
-    serie = [v for v in data["por_ventana"].values()]
+    valores_ordenados = ordenar_claves(data["por_ventana"])
+    serie = [v for v in valores_ordenados]
     # serie tiene shape (T/size_ventana,)
-    size_ventana = 128
-    # Repetimos cada valor de exploración menos el ultimo para expandirlo a 128 frames, hasta que el valor llege a serie.size pero sin excederlo
+    size_ventana = data["ventana_frames"]
+    # Repetimos cada valor de exploración menos el ultimo para expandirlo a 64 frames, hasta que el valor llege a serie.size pero sin excederlo
     serie_expandida = []
     for valor in serie[:-1]:
         serie_expandida.extend([valor] * size_ventana)
@@ -215,7 +240,8 @@ def cargar_velocidad_centroide(path):
         data = json.load(f)
     
     # Extraemos únicamente la métrica 'entropia' de cada frame
-    serie = [v["velocidad"] for v in data.values()]
+    valores_ordenados = ordenar_claves(data)
+    serie = [v["velocidad"] for v in valores_ordenados]
     # serie tiene shape (T,)
 
     # Convertimos a array numpy y añadimos eje de canal
@@ -234,7 +260,8 @@ def cargar_velocidades(path):
         data = json.load(f)
     
     # Dentro del apartado "media_por_frame", cada clave es un frame y el valor es la velocidad media
-    serie = [v for v in data["media_por_frame"].values()]
+    valores_ordenados = ordenar_claves(data["media_por_frame"])
+    serie = [v for v in valores_ordenados]
     # serie tiene shape (T-1,)
     # Nota: T-1 porque la velocidad se calcula entre frames consecutivos
 
@@ -256,7 +283,8 @@ def cargar_dispersion_velocidades(path):
         data = json.load(f)
     
     # Dentro del apartado "media_por_frame", cada clave es un frame y el valor es la velocidad media
-    serie = [v for v in data["dispersion_por_frame"].values()]
+    valores_ordenados = ordenar_claves(data["dispersion_por_frame"])
+    serie = [v for v in valores_ordenados]
     # serie tiene shape (T-1,)
     # Nota: T-1 porque la velocidad se calcula entre frames consecutivos
 
@@ -278,7 +306,8 @@ def cargar_porcentaje_giros(path):
         data = json.load(f)
     
     # Dentro del apartado "media_por_frame", cada clave es un frame y el valor es la velocidad media
-    serie = [v for v in data["porcentaje_giros_bruscos"].values()]
+    valores_ordenados = ordenar_claves(data["porcentaje_giros_bruscos"])
+    serie = [v for v in valores_ordenados]
     # serie tiene shape (T-2)
     # Nota: T-2 porque el porcentaje de giros bruscos se calcula usando frames consecutivos y el frame actual
 
@@ -300,8 +329,9 @@ def cargar_media_y_std_giros(path):
         data = json.load(f)
     
     # Dentro del apartado "media_por_frame", cada clave es un frame y el valor es la velocidad media
-    media = [v for v in data["media_por_frame"].values()]
-    std = [v for v in data["std_por_frame"].values()]
+    valores_ordenados = ordenar_claves(data["media_por_frame"])
+    media = [v for v in valores_ordenados]
+    std = [v for v in ordenar_claves(data["std_por_frame"])]
     # serie tiene shape (T-2)
     # Nota: T-2 porque el porcentaje de giros bruscos se calcula usando frames consecutivos y el frame actual
 
@@ -327,7 +357,8 @@ def cargar_entropia_direcciones(path):
         data = json.load(f)
     
     # Dentro del apartado "entropia_por_frame", cada clave es un frame y el valor es la velocidad media
-    serie = [v for v in data["entropia_por_frame"].values()]
+    valores_ordenados = ordenar_claves(data["entropia_por_frame"])
+    serie = [v for v in valores_ordenados]
     # serie tiene shape (T-1,)
     # Nota: T-1 porque la velocidad se calcula entre frames consecutivos
 
@@ -349,7 +380,8 @@ def cargar_polarizacion(path):
         data = json.load(f)
 
     # Dentro del apartado "polarizacion_por_frame", cada clave es un frame y el valor es la velocidad media
-    serie = [v for v in data["polarizacion_por_frame"].values()]
+    valores_ordenados = ordenar_claves(data["polarizacion_por_frame"])
+    serie = [v for v in valores_ordenados]
     # serie tiene shape (T-1,)
     # Nota: T-1 porque la velocidad se calcula entre frames consecutivos
 
@@ -380,19 +412,14 @@ def cargar_persistencia(path):
     serie_expandida_std = []
 
     # Expandimos cada valor menos el último
-    for valor_media, valor_std in zip(media[:-1], std[:-1]):
+    # for valor_media, valor_std in zip(media[:-1], std[:-1]):
+    #     serie_expandida_media.extend([valor_media] * size_ventana)
+    #     serie_expandida_std.extend([valor_std] * size_ventana)
+    for valor_media in media[:-1]:
         serie_expandida_media.extend([valor_media] * size_ventana)
+    for valor_std in std[:-1]:
         serie_expandida_std.extend([valor_std] * size_ventana)
 
-    # Agregamos una repetición del último valor expandido
-    # Nota: Esto toma el último valor agregado, no el original
-    if serie_expandida_media:
-        serie_expandida_media.append(serie_expandida_media[-1])
-        serie_expandida_std.append(serie_expandida_std[-1])
-    else:
-        # Caso en el que solo había un bloque (media y std con un valor)
-        serie_expandida_media.append(media[-1])
-        serie_expandida_std.append(std[-1])
 
     # Unificamos en un array con canal
     serie = np.stack([serie_expandida_media, serie_expandida_std], axis=0).astype(np.float32)
@@ -408,8 +435,9 @@ def cargar_varianza_espacial(path):
         data = json.load(f)
 
     # Extraemos la métrica 'varianza_espacial' y la de varianza 'std' de cada frame
-    varianza = [v["varianza"] for v in data.values()]
-    std = [v["std"] for v in data.values()]
+    valores_ordenados = ordenar_claves(data)
+    varianza = [v["varianza"] for v in valores_ordenados]
+    std = [v["std"] for v in valores_ordenados]
     # cada uno tiene shape (T,)
 
     # Convertimos a array numpy y unificamos como canales
@@ -429,7 +457,8 @@ def cargar_entropia_binaria(path):
         data = json.load(f)
 
     # Extraemos la métrica 'entropia_binaria' de cada frame
-    serie = [v["entropia"] for v in data.values()]
+    valores_ordenados = ordenar_claves(data)
+    serie = [v["entropia"] for v in valores_ordenados]
     # serie tiene shape (T/size_ventana,)
 
     size_ventana = 64
@@ -453,8 +482,9 @@ def cargar_centro_masa(path):
     with open(path, "r") as f:
         data = json.load(f)
     # Extraemos la los valores de cada eje
-    x = [v[0] for v in data.values()]
-    y = [v[1] for v in data.values()]
+    valores_ordenados = ordenar_claves(data)
+    x = [v[0] for v in valores_ordenados]
+    y = [v[1] for v in valores_ordenados]
     # cada uno tiene shape (T,)
 
     # Convertimos a array numpy y unificamos como canales
@@ -473,8 +503,9 @@ def cargar_densidad(path):
 
     # Extraemos los valores: lista de longitud T, cada uno es una matriz (5x5)
     # Dimensión intermedia: (T, 5, 5)
-    serie = [np.array(matriz).flatten() for matriz in data["densidad"].values()]
-    
+    valores_ordenados = ordenar_claves(data["densidad"])
+    serie = [np.array(matriz).flatten() for matriz in valores_ordenados]
+
     # Convertimos a array NumPy: (T, 25)
     serie = np.array(serie, dtype=np.float32)
 
@@ -490,7 +521,8 @@ def cargar_dispersion_px(path):
         data = json.load(f)
 
     # Extraemos la métrica 'entropia_binaria' de cada frame
-    serie = [v["porcentaje"] for v in data.values()]
+    valores_ordenados = ordenar_claves(data)
+    serie = [v["porcentaje"] for v in valores_ordenados]
     # serie tiene shape (T/size_ventana,)
 
     size_ventana = 64
@@ -514,7 +546,8 @@ def cargar_velocidad_grupo(path):
     with open(path, "r") as f:
         data = json.load(f)
     # Extraemos la métrica 'velocidad_grupo' de cada frame
-    serie = [v["velocidad"] for v in data.values()]
+    valores_ordenados = ordenar_claves(data)
+    serie = [v["velocidad"] for v in valores_ordenados]
     # serie tiene shape (T,)
     # Convertimos a array numpy y añadimos eje de canal
     serie = np.array(serie, dtype=np.float32)[None, :]
@@ -525,8 +558,8 @@ def cargar_velocidad_grupo(path):
 # ------------------ LISTA DE DESCRIPTORES ----------------
 
 DESCRIPTORES = [
+    ("bbox_stats/distribucion_espacial_2_4.json", cargar_distribucion_espacial),
     ("bbox_stats/areas_blobs.json", cargar_areas_blobs),
-    ("bbox_stats/distribucion_espacial_(2,4).json", cargar_distribucion_espacial),
     ("bbox_stats/coef_agrupacion.json", cargar_coef_agrupacion),
     ("bbox_stats/densidad_local.json", cargar_densidad_local),
     ("bbox_stats/entropia.json", cargar_entropia),
@@ -540,13 +573,13 @@ DESCRIPTORES = [
     ("trayectorias_stats/angulo_cambio_direccion.json", cargar_media_y_std_giros),
     ("trayectorias_stats/direcciones.json", cargar_entropia_direcciones),
     ("trayectorias_stats/direcciones.json", cargar_polarizacion),
-    ("trayectorias_stats/persistencia.json", cargar_persistencia),
+    ("trayectorias_stats/persistencia_espacial.json", cargar_persistencia),
     ("mask_stats/varianza_espacial.json", cargar_varianza_espacial),
     ("mask_stats/entropia_binaria_64.json", cargar_entropia_binaria),
     ("mask_stats/centro_masa.json", cargar_centro_masa),
-    ("mask_stats/densidad_(2,4).json", cargar_densidad),
-    ("masks_stats/dispersion_64.json", cargar_dispersion_px),
-    ("masks_stats/velocidad_grupo.json", cargar_velocidad_grupo),
+    ("mask_stats/densidad_2_4.json", cargar_densidad),
+    ("mask_stats/dispersion_64.json", cargar_dispersion_px),
+    ("mask_stats/velocidad_grupo.json", cargar_velocidad_grupo),
     
 ]
 
@@ -562,14 +595,86 @@ def procesar_video(carpeta,input_dir, output_dir):
             full_path = os.path.join(path_base, ruta_rel)
             array, info_canal = loader(full_path)
             arrays.append(array)
-            longitudes.append(array.shape[1])
+            longitudes.extend([array.shape[1]] * array.shape[0])
             info_canales.extend(info_canal)
+
+        # Almacenamos en un json cada canal con su información
+        # for i, (array, info_canal) in enumerate(zip(arrays, info_canales)):
+        #     canal_info = {
+        #         f"canal_{i}": {
+        #             "shape": array.shape,
+        #             "descripcion": info_canal,
+        #             "longitud": array.shape[1],
+        #             "media": array.mean(axis=1).tolist(),
+        #             "std": array.std(axis=1).tolist(),
+        #             "valores": array.tolist()
+        #         }
+        #     }
+        #     canal_json_path = os.path.join(output_dir, f"{carpeta}_canal_{i}_info.json")
+        #     with open(canal_json_path, "w") as f:
+        #         json.dump(canal_info, f, indent=4)
+        # canal_8 = arrays[7]  # Asumiendo que el canal 8 es el octavo en la lista
+        # canal_8_info = {
+        #     "canal_8": {
+        #         "shape": canal_8.shape,
+        #         "descripcion": "Distribución espacial 2x4",
+        #         "longitud": canal_8.shape[1],
+        #         "media": canal_8.mean(axis=1).tolist(),
+        #         "std": canal_8.std(axis=1).tolist(),
+        #         "valores": canal_8.tolist()
+        #     }
+        # }
+        # canal_8_json_path = os.path.join(output_dir, f"{carpeta}_canal_8_info.json")
+        # with open(canal_8_json_path, "w") as f:
+        #     json.dump(canal_8_info, f, indent=4)    
+        # canal_idx = 0
+        # for array in arrays:
+        #     for ch_idx in range(array.shape[0]):
+        #         canal = array[ch_idx]
+        #         nombre = info_canales[canal_idx]
+        #         # Guardar JSON con info de este canal
+        #         canal_info = {
+        #             f"canal_{canal_idx}": {
+        #                 "shape": canal.shape,
+        #                 "descripcion": nombre,
+        #                 "longitud": canal.shape[0],
+        #                 "media": float(canal.mean()),
+        #                 "std": float(canal.std()),
+        #                 "valores": canal.tolist()
+        #             }
+        #         }
+        #         canal_json_path = os.path.join(output_dir, f"{carpeta}_canal_{canal_idx}_info.json")
+        #         with open(canal_json_path, "w") as f:
+        #             json.dump(canal_info, f, indent=4)
+                
+        #         canal_idx += 1
+
+        
+
+        
+        print("Longitudes de los arrays:", longitudes)
+        
 
         longitud_min = min(longitudes)
         arrays = [a[:, :longitud_min] for a in arrays]
         data = np.concatenate(arrays, axis=0)
-        
-        usable = longitud_min - (longitud_min % 512)
+
+        # Calcular siguiente múltiplo de 512
+        siguiente_multiplo = ((longitud_min // 512) + 1) * 512
+        diferencia = siguiente_multiplo - longitud_min
+
+        # Si la diferencia es menor o igual a 5, repetimos últimos valores hasta completar
+        if diferencia <= 5:
+            print(f"⚠️ Aplicando padding: añadiendo {diferencia} frames repetidos para completar {siguiente_multiplo}")
+            # Tomamos los últimos valores y los repetimos
+            ultimos_valores = data[:, -1:]  # shape: (C, 1)
+            padding = np.repeat(ultimos_valores, diferencia, axis=1)  # shape: (C, diferencia)
+            data = np.concatenate([data, padding], axis=1)
+            longitud_min = data.shape[1]
+            usable = longitud_min  # ahora el usable es el siguiente múltiplo directamente
+        else:
+            usable = longitud_min - (longitud_min % 512)
+
         bloques = np.stack(np.split(data[:, :usable], usable // 512, axis=1))
         
         # Creamos el json de informacion de canales. Recorrera info_canales y guardar,a el indice y la descripcion del canal correspondiente 
@@ -582,6 +687,7 @@ def procesar_video(carpeta,input_dir, output_dir):
             "bloques": bloques.shape[0],
             "longitud_total": longitud_min
         }
+  
 
         os.makedirs(output_dir, exist_ok=True)
         
@@ -604,8 +710,17 @@ def procesar_video(carpeta,input_dir, output_dir):
             ts_inicio = format_t(tiempo_inicio)
             ts_fin = format_t(tiempo_fin)
 
-            nombre = f"{carpeta}_{ts_inicio}_{ts_fin}.npz"
+            # Encuentra la fecha del video
+            fecha = os.path.basename(os.path.dirname(input_dir))
+            fecha = fecha.replace("-", "")
+
+            nombre = f"{fecha}_{carpeta}_{ts_inicio}_{ts_fin}.npz"
             np.savez_compressed(os.path.join(output_dir, nombre), data=bloque)
+
+            # Guardamos el JSON de información
+            info_json_path = os.path.join(output_dir, f"{fecha}_{carpeta}_info.json")
+            with open(info_json_path, "w") as f:
+                json.dump(info_json, f, indent=4) 
             
         
                 # ==== LOG DETALLADO ====
@@ -619,6 +734,7 @@ def procesar_video(carpeta,input_dir, output_dir):
 
     except Exception as e:
         print(f"❌ Error en {carpeta}: {e}")
+        print("Longitudes de los arrays:", longitudes)
 
 
 
@@ -630,12 +746,14 @@ def generar_inputs_moment(input_dir, estado = None):
         estado.emitir_total_videos(len(carpetas))
     
     for idx, carpeta in enumerate(sorted(carpetas)):
+        if carpeta.startswith("moment"):
+            if estado:
+                estado.emitir_video_progreso(idx+1)
+            continue
         if estado:
             estado.emitir_etapa(f"Procesando: {carpeta}")
         procesar_video(carpeta, input_dir, output_dir)
         if estado:
-            estado.emitir_video_progreso(idx)
-    
-    if estado:
-        estado.emitir_etapa("✅ Generación completada.")
+            estado.emitir_video_progreso(idx+1)
+
 

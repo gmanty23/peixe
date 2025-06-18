@@ -120,12 +120,12 @@ class VentanaAnalisis(QWidget):
         estado.on_video_progreso = self.barra_progreso_grupo.setValue
         
         # Llamada a tu función de procesado
-        generar_inputs_moment(carpeta)
+        generar_inputs_moment(carpeta, estado)
         
-        from PySide6.QtWidgets import QMessageBox
-        QMessageBox.information(self, "Generación", "Inputs de MOMENT generados correctamente.")
+        
+        self.barra_progreso_grupo.setValue(100)
+        self.etiqueta_estado_grupo.setText("✅ Generación completada.")
 
-    
     def volver_a_inicio(self):
         self.close()
         if self.ventana_inicio:

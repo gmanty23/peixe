@@ -98,7 +98,7 @@ def calcular_distribucion_espacial(ruta_centroides_json, salida_dir, dimensiones
             resultados = pool.starmap(procesar_grid, tareas)
 
         for grid_size, histograma in resultados:
-            nombre_archivo = f"distribucion_espacial_{grid_size}.json"
+            nombre_archivo = f"distribucion_espacial_{grid_size[0]}_{grid_size[1]}.json"
             ruta_out = os.path.join(salida_dir, nombre_archivo)
             with open(ruta_out, "w") as f_out:
                 json.dump({"grid_size": [grid_size[0], grid_size[1]], "histograma": histograma}, f_out, indent=2)
@@ -324,7 +324,9 @@ def calcular_entropia_espacial(ruta_centroides_json, salida_path, dimensiones_en
         filas = columnas = grid_size
         total_celdas = filas * columnas
 
-        for i, (frame_key, centroides) in enumerate(centroides_dict.items()):
+        frame_items = sorted(centroides_dict.items(), key=lambda x: int(x[0].split("_")[-1]))
+
+        for i, (frame_key, centroides) in enumerate(frame_items):
             histograma = np.zeros((filas, columnas), dtype=int)
 
             for cx, cy in centroides:
@@ -348,7 +350,7 @@ def calcular_entropia_espacial(ruta_centroides_json, salida_path, dimensiones_en
             }
 
             if i % 25 == 0:
-                porcentaje = int((i / total_frames) * 100)
+                porcentaje = int(((i + 1) / total_frames) * 100)
                 estado.emitir_progreso(porcentaje)
 
         with open(salida_path, "w") as f_out:
@@ -670,7 +672,7 @@ def calcular_histograma_densidad(ruta_masks, salida_dir, dimensiones_entrada, es
             resultados = pool.starmap(procesar_grid_worker, tareas)
 
         for grid_size, resultado in resultados:
-            nombre_archivo = f"densidad_{grid_size}.json"
+            nombre_archivo = f"densidad_{grid_size[0]}_{grid_size[1]}.json"
             ruta_out = os.path.join(salida_dir, nombre_archivo)
             with open(ruta_out, "w") as f_out:
                 json.dump({

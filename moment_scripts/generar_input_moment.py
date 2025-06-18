@@ -489,8 +489,8 @@ def cargar_velocidad_grupo(path):
 # ============================
 
 DESCRIPTORES = [
+    ("bbox_stats/distribucion_espacial_2_4.json", cargar_distribucion_espacial),
     ("bbox_stats/areas_blobs.json", cargar_areas_blobs),
-    ("bbox_stats/distribucion_espacial_(2,4).json", cargar_distribucion_espacial),
     ("bbox_stats/coef_agrupacion.json", cargar_coef_agrupacion),
     ("bbox_stats/densidad_local.json", cargar_densidad_local),
     ("bbox_stats/entropia.json", cargar_entropia),
@@ -504,14 +504,14 @@ DESCRIPTORES = [
     ("trayectorias_stats/angulo_cambio_direccion.json", cargar_media_y_std_giros),
     ("trayectorias_stats/direcciones.json", cargar_entropia_direcciones),
     ("trayectorias_stats/direcciones.json", cargar_polarizacion),
-    ("trayectorias_stats/persistencia.json", cargar_persistencia),
+    ("trayectorias_stats/persistencia_espacial.json", cargar_persistencia),
     ("mask_stats/varianza_espacial.json", cargar_varianza_espacial),
     ("mask_stats/entropia_binaria_64.json", cargar_entropia_binaria),
     ("mask_stats/centro_masa.json", cargar_centro_masa),
-    ("mask_stats/densidad_(2,4).json", cargar_densidad),
-    ("masks_stats/dispersion_64.json", cargar_dispersion_px),
-    ("masks_stats/velocidad_grupo.json", cargar_velocidad_grupo),
-    
+    ("mask_stats/densidad_2_4.json", cargar_densidad),
+    ("mask_stats/dispersion_64.json", cargar_dispersion_px),
+    ("mask_stats/velocidad_grupo.json", cargar_velocidad_grupo),
+       
 ]
 
 # ============================

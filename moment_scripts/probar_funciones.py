@@ -25,31 +25,32 @@ from moment_scripts.generar_input_moment import (
     
 )
 
-# == AREAS BLOBS ==
-arr_areas_blobs = cargar_areas_blobs(
-    "/home/gms/AnemoNAS/prueba_GUI/output_5s/bbox_stats/areas_blobs.json"
-)
-print("--- AREAS BLOBS ---")
-print("Shape:", arr_areas_blobs.shape)
-print("Ejemplo media(primeros 5 frames):", arr_areas_blobs[0, :5])
-print("Ejemplo std(primeros 5 frames):", arr_areas_blobs[1, :5])
+# # == AREAS BLOBS ==
+# arr_areas_blobs = cargar_areas_blobs(
+#     "/home/gms/AnemoNAS/prueba_GUI/output_5s/bbox_stats/areas_blobs.json"
+# )
+# print("--- AREAS BLOBS ---")
+# print("Shape:", arr_areas_blobs.shape)
+# print("Ejemplo media(primeros 5 frames):", arr_areas_blobs[0, :5])
+# print("Ejemplo std(primeros 5 frames):", arr_areas_blobs[1, :5])
 
 
 # === DISTRIBUCIÓN ESPACIAL ===
-arr_dist_esp = cargar_distribucion_espacial(
-    "/home/gms/AnemoNAS/prueba_GUI/output_5s/bbox_stats/distribucion_espacial_(2, 4).json"
+arr_dist_esp, info_canal = cargar_distribucion_espacial(
+    "/home/gmanty/code/AnemoNAS/06-12-23/0921/USCL2-091606-092106/bbox_stats/distribucion_espacial_2_4.json"
 )
 print("--- DISTRIBUCIÓN ESPACIAL ---")
 print("Shape:", arr_dist_esp.shape)
+print("Longitud canales: ", arr_dist_esp[0].shape, arr_dist_esp[1].shape, arr_dist_esp[2].shape, arr_dist_esp[3].shape, arr_dist_esp[4].shape, arr_dist_esp[5].shape, arr_dist_esp[6].shape, arr_dist_esp[7].shape)
 print("Ejemplo (primer canal, primeros 5 frames):", arr_dist_esp[0, :5])
 
-# == VELOCIDAD CENTROIDE GRUPO ==
-arr_vel_centroide = cargar_velocidad_centroide(
-    "/home/gms/AnemoNAS/prueba_GUI/output_5s/bbox_stats/velocidad_centroide.json"
-)
-print("--- VELOCIDAD CENTROIDE GRUPO ---")
-print("Shape:", arr_vel_centroide.shape)
-print("Ejemplo (primeros 5 frames):", arr_vel_centroide[0, :5])
+# # == VELOCIDAD CENTROIDE GRUPO ==
+# arr_vel_centroide = cargar_velocidad_centroide(
+#     "/home/gms/AnemoNAS/prueba_GUI/output_5s/bbox_stats/velocidad_centroide.json"
+# )
+# print("--- VELOCIDAD CENTROIDE GRUPO ---")
+# print("Shape:", arr_vel_centroide.shape)
+# print("Ejemplo (primeros 5 frames):", arr_vel_centroide[0, :5])
 
 
 # # === COEFICIENTE DE AGRUPACIÓN ===
@@ -170,46 +171,46 @@ print("Ejemplo (primeros 5 frames):", arr_vel_centroide[0, :5])
 # print("Ejemplo (cambio de ventana):", arr_exploracion[0, 62:67])
 # print("Ejemplo (ultimo frame):", arr_exploracion[0, -5:])  # Últimos 5 frames
 
-# === CENTRO DE MASAS ===
-arr_centro_masa = cargar_centro_masa(
-    "/home/gms/AnemoNAS/prueba_GUI/output_5s/mask_stats/centro_masa.json"
-)
-print("\n--- CENTRO DE MASAS ---")
-print("Shape:", arr_centro_masa.shape)
-print("Ejemplo eje x(primeros 5 frames):", arr_centro_masa[0, :5])
-print("Ejemplo eje y(primeros 5 frames):", arr_centro_masa[1, :5])
+# # === CENTRO DE MASAS ===
+# arr_centro_masa = cargar_centro_masa(
+#     "/home/gms/AnemoNAS/prueba_GUI/output_5s/mask_stats/centro_masa.json"
+# )
+# print("\n--- CENTRO DE MASAS ---")
+# print("Shape:", arr_centro_masa.shape)
+# print("Ejemplo eje x(primeros 5 frames):", arr_centro_masa[0, :5])
+# print("Ejemplo eje y(primeros 5 frames):", arr_centro_masa[1, :5])
 
-# === DENSIDAD ===
-arr_densidad = cargar_densidad(
-    "/home/gms/AnemoNAS/prueba_GUI/output_5s/mask_stats/densidad_(2, 4).json"
-)
-print("\n--- DENSIDAD ---")
-print("Shape:", arr_densidad.shape)
-print("Ejemplo (primeros 5 frames):", arr_densidad[0, :5])
+# # === DENSIDAD ===
+# arr_densidad = cargar_densidad(
+#     "/home/gms/AnemoNAS/prueba_GUI/output_5s/mask_stats/densidad_(2, 4).json"
+# )
+# print("\n--- DENSIDAD ---")
+# print("Shape:", arr_densidad.shape)
+# print("Ejemplo (primeros 5 frames):", arr_densidad[0, :5])
 
-# === DISPERSIÓN PX ===
-arr_dispersion_px = cargar_dispersion_px(
-    "/home/gms/AnemoNAS/prueba_GUI/output_5s/mask_stats/dispersion_64.json"
-)
-print("\n--- DISPERSIÓN PX ---")
-print("Shape:", arr_dispersion_px.shape)
-print("Ejemplo (primeros 5 frames):", arr_dispersion_px[0, :5])
-print("Ejemplo (cambio de ventana):", arr_dispersion_px[0, 62:67])
-print("Ejemplo (final ultima ventana):", arr_dispersion_px[0, -5:]) 
+# # === DISPERSIÓN PX ===
+# arr_dispersion_px = cargar_dispersion_px(
+#     "/home/gms/AnemoNAS/prueba_GUI/output_5s/mask_stats/dispersion_64.json"
+# )
+# print("\n--- DISPERSIÓN PX ---")
+# print("Shape:", arr_dispersion_px.shape)
+# print("Ejemplo (primeros 5 frames):", arr_dispersion_px[0, :5])
+# print("Ejemplo (cambio de ventana):", arr_dispersion_px[0, 62:67])
+# print("Ejemplo (final ultima ventana):", arr_dispersion_px[0, -5:]) 
 
-# === VELOCIDAD GRUPO ===
-arr_velocidad_grupo = cargar_velocidad_grupo(
-    "/home/gms/AnemoNAS/prueba_GUI/output_5s/mask_stats/velocidad_grupo.json"
-)
-print("\n--- VELOCIDAD GRUPO ---")
-print("Shape:", arr_velocidad_grupo.shape)
-print("Ejemplo (primeros 5 frames):", arr_velocidad_grupo[0, :5])
+# # === VELOCIDAD GRUPO ===
+# arr_velocidad_grupo = cargar_velocidad_grupo(
+#     "/home/gms/AnemoNAS/prueba_GUI/output_5s/mask_stats/velocidad_grupo.json"
+# )
+# print("\n--- VELOCIDAD GRUPO ---")
+# print("Shape:", arr_velocidad_grupo.shape)
+# print("Ejemplo (primeros 5 frames):", arr_velocidad_grupo[0, :5])
 
-# === PERSISTENCIA ===
-arr_persistencia = cargar_persistencia(
-    "/home/gms/AnemoNAS/prueba_GUI/output_5s/trayectorias_stats/persistencia_espacial.json"
-)
-print("\n--- PERSISTENCIA ESPACIAL ---")
-print("Shape:", arr_persistencia.shape)
-print("Ejemplo (primeros 5 frames):", arr_persistencia[0, :5])
-print("Ejemplo (cambio de ventana):", arr_persistencia[0, 62:67])
+# # === PERSISTENCIA ===
+# arr_persistencia = cargar_persistencia(
+#     "/home/gms/AnemoNAS/prueba_GUI/output_5s/trayectorias_stats/persistencia_espacial.json"
+# )
+# print("\n--- PERSISTENCIA ESPACIAL ---")
+# print("Shape:", arr_persistencia.shape)
+# print("Ejemplo (primeros 5 frames):", arr_persistencia[0, :5])
+# print("Ejemplo (cambio de ventana):", arr_persistencia[0, 62:67])
