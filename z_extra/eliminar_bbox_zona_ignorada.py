@@ -50,6 +50,6 @@ def limpiar_bboxes_txt_con_mascara(carpeta_trabajo, ruta_mascara):
         #tqdm.write(f"✅ {os.path.basename(txt_path)}: {len(nuevas_lineas)} bboxes conservadas.")
 
 if __name__ == "__main__":
-    carpeta_trabajo = "/home/gms/AnemoNAS/POR_DIA/08-12-2023/" 
+    carpeta_trabajo = "/media/gms/EXTERNAL_USB/06-12-23/0926-1852" 
     ruta_mascara = "processing_GUI/procesamiento/zona_no_valida.png"
     limpiar_bboxes_txt_con_mascara(carpeta_trabajo, ruta_mascara)
