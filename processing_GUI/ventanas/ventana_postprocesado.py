@@ -313,6 +313,7 @@ class VentanaPostprocesado(QWidget):
             dimensiones_entrada_yolo = dims["output_dims"]
         except Exception:
             QMessageBox.critical(self, "Error", "No se pudo leer output_dims_yolo.json")
+            print("Ruta usada para output_dims_yolo:", output_dims_path_yolo)
             return
         try:
             subcarpetas = [os.path.join(carpeta, d) for d in os.listdir(carpeta)
@@ -323,6 +324,7 @@ class VentanaPostprocesado(QWidget):
             dimensiones_entrada_morph = dims["output_dims"]
         except Exception:
             QMessageBox.critical(self, "Error", "No se pudo leer output_dims_masks.json")
+            print("Ruta usada para output_dims_masks:", output_dims_path_morph)
             return
 
         # Llamada al procesado de bbox

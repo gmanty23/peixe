@@ -33,8 +33,8 @@ def procesar_subcarpetas(carpeta_trabajo):
                 if os.path.exists(archivo_path):
                     os.remove(archivo_path)
                     # print(f"Eliminado: {archivo_path}")
-                else:
-                    print(f"No encontrado (no eliminado): {archivo_path}")
+                # else:
+                #     print(f"No encontrado (no eliminado): {archivo_path}")
             
             # Renombrar archivos con caracteres especiales en bbox_stats
             renombrar_archivos_especiales(bbox_stats_path)
@@ -52,8 +52,8 @@ def procesar_subcarpetas(carpeta_trabajo):
                 if os.path.exists(archivo_path):
                     os.remove(archivo_path)
                     # print(f"Eliminado: {archivo_path}")
-                else:
-                    print(f"No encontrado (no eliminado): {archivo_path}")
+                # else:
+                #     print(f"No encontrado (no eliminado): {archivo_path}")
 
             # Renombrar archivos con caracteres especiales en mask_stats
             renombrar_archivos_especiales(masks_stats_path)
@@ -93,7 +93,7 @@ def procesar_subcarpetas(carpeta_trabajo):
 
 if __name__ == "__main__":
     # 🔹 Define aquí la carpeta de trabajo
-    carpeta_trabajo = "/home/gmanty/code/AnemoNAS/07-12-23/1812-2002"
+    carpeta_trabajo = "/home/gmanty/code/AnemoNAS/14-12-23/1932-2002"
 
     if os.path.isdir(carpeta_trabajo):
         procesar_subcarpetas(carpeta_trabajo)

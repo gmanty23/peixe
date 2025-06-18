@@ -324,7 +324,9 @@ def calcular_entropia_espacial(ruta_centroides_json, salida_path, dimensiones_en
         filas = columnas = grid_size
         total_celdas = filas * columnas
 
-        for i, (frame_key, centroides) in enumerate(centroides_dict.items()):
+        frame_items = sorted(centroides_dict.items(), key=lambda x: int(x[0].split("_")[-1]))
+
+        for i, (frame_key, centroides) in enumerate(frame_items):
             histograma = np.zeros((filas, columnas), dtype=int)
 
             for cx, cy in centroides:
@@ -348,7 +350,7 @@ def calcular_entropia_espacial(ruta_centroides_json, salida_path, dimensiones_en
             }
 
             if i % 25 == 0:
-                porcentaje = int((i / total_frames) * 100)
+                porcentaje = int(((i + 1) / total_frames) * 100)
                 estado.emitir_progreso(porcentaje)
 
         with open(salida_path, "w") as f_out:
