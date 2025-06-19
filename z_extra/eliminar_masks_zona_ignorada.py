@@ -69,6 +69,6 @@ def limpiar_rle_con_mascara(carpeta_trabajo, ruta_mascara):
         #tqdm.write(f"✅ Limpieza aplicada: {os.path.basename(npz_path)}")
 
 if __name__ == "__main__":
-    carpeta_trabajo = "/home/gmanty/code/AnemoNAS/07-12-23/0926-1752" 
+    carpeta_trabajo = "/home/gms/AnemoNAS/POR_DIA/08-12-2023/" 
     ruta_mascara = "processing_GUI/procesamiento/zona_no_valida.png"
     limpiar_rle_con_mascara(carpeta_trabajo, ruta_mascara)

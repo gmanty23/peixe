@@ -93,7 +93,7 @@ def procesar_subcarpetas(carpeta_trabajo):
 
 if __name__ == "__main__":
     # 🔹 Define aquí la carpeta de trabajo
-    carpeta_trabajo = "/home/gmanty/code/AnemoNAS/14-12-23/1932-2002"
+    carpeta_trabajo = "/home/gms/AnemoNAS/POR_DIA/13-12-2023/"
 
     if os.path.isdir(carpeta_trabajo):
         procesar_subcarpetas(carpeta_trabajo)
