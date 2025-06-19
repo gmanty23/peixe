@@ -19,7 +19,8 @@ class NPZDataset(Dataset):
         data = npz["data"][self.channels_to_use, :]
         data_tensor = torch.tensor(data, dtype=torch.float32)
         label_tensor = torch.tensor(self.labels[idx], dtype=torch.long)
-        return data_tensor, label_tensor
+        path = self.file_paths[idx]  # Aquí recogemos el path
+        return data_tensor, label_tensor, path
 
 def load_dataset(root_dirs, channels_to_use, val_split=0.2, batch_size=64):
     all_files = []

@@ -99,15 +99,22 @@ def train_moment(model, train_loader, val_loader, class_weights, val_dataset, ep
     save_embeddings(model, val_dataset, device)
 
 def save_embeddings(model, dataset, device):
-    all_embeddings, all_labels = [], []
+    all_embeddings, all_labels, all_paths = [], [], []
     loader = torch.utils.data.DataLoader(dataset, batch_size=64, shuffle=False)
     model.eval()
     with torch.no_grad():
-        for data, labels in tqdm(loader, desc="Saving embeddings"):
+        for data, labels, paths in tqdm(loader, desc="Saving embeddings"):
             data = data.to(device)
             output = model(x_enc=data)
             all_embeddings.append(output.embeddings.cpu().numpy())
             all_labels.append(labels.cpu().numpy())
+            all_paths.extend(paths)  # Guardamos paths
+
     embeddings = np.concatenate(all_embeddings)
     labels = np.concatenate(all_labels)
-    np.savez("outputs/embeddings/val_embeddings.npz", embeddings=embeddings, labels=labels)
+    paths = np.array(all_paths)
+    np.savez("outputs/embeddings/val_embeddings.npz",
+             embeddings=embeddings,
+             labels=labels,
+             paths=paths)
+
