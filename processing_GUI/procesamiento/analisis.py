@@ -101,11 +101,11 @@ def cargar_distribucion_espacial(path):
     valores_ordenados = ordenar_claves(data["histograma"])
     serie = [np.array(matriz).flatten() for matriz in valores_ordenados]
     
-    # Convertimos a array NumPy: (T, 25)
+    # Convertimos a array NumPy: (T, 8)
     serie = np.array(serie, dtype=np.float32)
 
 
-    # Transponemos para tener canales en la primera dimensión: (25, T)
+    # Transponemos para tener canales en la primera dimensión: (8, T)
     return serie.T , info_canal
 
 
@@ -396,7 +396,7 @@ def cargar_polarizacion(path):
 
 def cargar_persistencia(path):
     # Extraemos la información del canal, solamente los nombres de las variables que van en cada canal
-    info_canal = ["persistencia"]
+    info_canal = ["persistencia_64_media", "persistencia_64_std"]
     
     # Abrimos el archivo JSON y cargamos los datos
     with open(path, "r") as f:
@@ -495,7 +495,7 @@ def cargar_centro_masa(path):
 
 def cargar_densidad(path):
     # Extraemos la información del canal, solamente los nombres de las variables que van en cada canal
-    info_canal = ["densidad"]
+    info_canal = ["densidad_1_1", "densidad_1_2", "densidad_1_3", "densidad_1_4", "densidad_2_1", "densidad_2_2", "densidad_2_3", "densidad_2_4"]
     
     # Abrimos el JSON
     with open(path, "r") as f:
