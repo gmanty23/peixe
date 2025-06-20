@@ -81,13 +81,16 @@ def train_moment(model, train_loader, val_loader, class_weights, val_dataset, pa
         avg_val_loss = val_loss / val_total
         save_confusion_matrix(val_y_true, val_y_pred, epoch, "val", os.path.join(output_dir, "metrics"))
 
-        torch.save(model.state_dict(), os.path.join(output_dir, "models", f"epoch_{epoch+1}.pt"))
+        # torch.save(model.state_dict(), os.path.join(output_dir, "models", f"epoch_{epoch+1}.pt"))
+        torch.save(model.state_dict(), os.path.join(output_dir, "models", "last_model.pt"))
         if val_acc > best_val_acc:
             best_val_acc = val_acc
-            torch.save(model.state_dict(), os.path.join(output_dir, "models", "best_model.pt"))
+            torch.save(model.state_dict(), os.path.join(output_dir, "models", f"best_model_epoch_{epoch+1}.pt"))
+
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
-            torch.save(model.state_dict(), os.path.join(output_dir, "models", "best_loss_model.pt"))
+            torch.save(model.state_dict(), os.path.join(output_dir, "models", f"best_loss_model_epoch_{epoch+1}.pt"))
+
 
         epoch_metrics = {
             "epoch": epoch + 1,

@@ -247,9 +247,9 @@ class VentanaAnalisis(QWidget):
         if os.path.exists(final_output):
             model_dir = os.path.join(final_output, "models")
             if os.path.exists(model_dir):
-                checkpoints = glob.glob(os.path.join(model_dir, "epoch_*.pt"))
-                best_model = os.path.join(model_dir, "best_model.pt")
-                best_loss_model = os.path.join(model_dir, "best_loss_model.pt")
+                checkpoints = glob.glob(os.path.join(model_dir, "last_model.pt"))
+                best_model = os.path.join(model_dir, "best_model*.pt")
+                best_loss_model = os.path.join(model_dir, "best_loss_model*.pt")
                 choice = None
 
                 if checkpoints or os.path.exists(best_model) or os.path.exists(best_loss_model):
@@ -307,3 +307,4 @@ class VentanaAnalisis(QWidget):
         subprocess.run(["python", "processing_GUI/procesamiento/clasificacion_supervisada/launcher_train.py", tmp_path])
 
         self.status_label.setText("✅ Procesamiento completado.")
+        print("Clasificación supervisada completada. Revisa la carpeta de salida para los resultados.")
