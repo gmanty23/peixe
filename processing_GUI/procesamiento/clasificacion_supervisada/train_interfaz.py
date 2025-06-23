@@ -3,7 +3,7 @@ import json
 import os
 from tqdm import tqdm
 import numpy as np
-from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, precision_score, recall_score, f1_score, balanced_accuracy_score
 import matplotlib.pyplot as plt
 
 def save_confusion_matrix(y_true, y_pred, epoch, split, output_dir):
@@ -91,13 +91,23 @@ def train_moment(model, train_loader, val_loader, class_weights, val_dataset, pa
             best_val_loss = avg_val_loss
             torch.save(model.state_dict(), os.path.join(output_dir, "models", f"best_loss_model_epoch_{epoch+1}.pt"))
 
+        val_precision = precision_score(val_y_true, val_y_pred, average="macro", zero_division=0)
+        val_recall = recall_score(val_y_true, val_y_pred, average="macro", zero_division=0)
+        val_f1 = f1_score(val_y_true, val_y_pred, average="macro", zero_division=0)
+        val_f1_weighted = f1_score(val_y_true, val_y_pred, average="weighted", zero_division=0)
+        val_bal_acc = balanced_accuracy_score(val_y_true, val_y_pred)
 
         epoch_metrics = {
             "epoch": epoch + 1,
             "train_loss": avg_train_loss,
             "train_acc": train_acc,
             "val_loss": avg_val_loss,
-            "val_acc": val_acc
+            "val_acc": val_acc,
+            "val_precision": val_precision,
+            "val_recall": val_recall,
+            "val_f1": val_f1,
+            "val_f1_weighted": val_f1_weighted,
+            "val_balanced_acc": val_bal_acc
         }
         history.append(epoch_metrics)
         with open(os.path.join(output_dir, "metrics", "history.json"), "w") as f:

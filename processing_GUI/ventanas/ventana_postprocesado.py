@@ -163,6 +163,7 @@ class VentanaPostprocesado(QWidget):
 
 
 
+
         # Botones inferiores
         botones_layout = QHBoxLayout()
         self.boton_atras = QPushButton("Atrás")

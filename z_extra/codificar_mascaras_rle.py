@@ -4,8 +4,8 @@ import numpy as np
 from tqdm import tqdm
 
 # ==== CONFIGURA AQUÍ ====
-directorio_entrada = "/home/gmanty/code/AnemoNAS/06-12-23/0926-1852/USCL2-092107-092607/masks_prueba"
-directorio_salida = "/home/gmanty/code/AnemoNAS/06-12-23/0926-1852/USCL2-092107-092607/masks_rle/"
+directorio_entrada = "/home/gmanty/code/calculos_memoria/"
+directorio_salida = "/home/gmanty/code/calculos_memoria/USCL2-061045-061545_p1_rle"
 os.makedirs(directorio_salida, exist_ok=True)
 # =========================
 

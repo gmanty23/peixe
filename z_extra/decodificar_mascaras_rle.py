@@ -4,8 +4,8 @@ import cv2
 from tqdm import tqdm
 
 # ==== CONFIGURA AQUÍ ====
-directorio_entrada = "/home/gmanty/code/AnemoNAS/06-12-23/0926-1852/USCL2-092107-092607/masks_rle/"
-directorio_salida = "/home/gmanty/code/AnemoNAS/06-12-23/0926-1852/USCL2-092107-092607/masks_rle_decode/"
+directorio_entrada = "/home/gmanty/code/calculos_memoria/_temp_/USCL2-061045-061545_p1/masks_rle/"
+directorio_salida = "/home/gmanty/code/calculos_memoria/_temp_/USCL2-061045-061545_p1/masks_rle_decode/"
 os.makedirs(directorio_salida, exist_ok=True)
 # =========================
 
