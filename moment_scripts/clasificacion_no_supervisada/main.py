@@ -10,7 +10,7 @@ from sklearn.model_selection import train_test_split
 def main():
     # CONFIGURACIÓN
     data_dir = "/home/gmanty/code/AnemoNAS/moment/clases/" 
-    channel_indices = [0,1,2,3,4,5,6,7]
+    channel_indices = [34,35,36,37,38,39,40,41]
     batch_size = 64
     class_names = ["activos", "alterados", "relajados"]
 

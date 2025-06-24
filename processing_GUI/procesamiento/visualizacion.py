@@ -53,7 +53,12 @@ def cargar_recorte(carpeta_base):
 def aplicar_recorte(frame, recorte):
     if not recorte:
         return frame
-    x, y, w, h = recorte["x"], recorte["y"], recorte["w"], recorte["h"]
+    if isinstance(recorte, dict):
+        x, y, w, h = recorte["x"], recorte["y"], recorte["w"], recorte["h"]
+    elif isinstance(recorte, (tuple, list)) and len(recorte) == 4:
+        x, y, w, h = recorte
+    else:
+        raise ValueError(f"Formato de recorte no soportado: {recorte}")
     return frame[y:y+h, x:x+w]
 
 def superponer_mascara(frame, mask, alpha=0.5, color=(0, 255, 0)):

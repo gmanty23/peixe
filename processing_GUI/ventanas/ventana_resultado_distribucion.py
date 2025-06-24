@@ -9,7 +9,7 @@ from matplotlib import cm
 from io import BytesIO
 
 class VentanaResultadoDistribucion(QWidget):
-    def __init__(self, ruta_video, carpeta_base, grid_inicial="10", parent=None):
+    def __init__(self, ruta_video, carpeta_base, grid_inicial="10_10", parent=None):
         super().__init__(parent)
         self.setWindowTitle("Distribución Espacial - Heatmap Temporal")
         self.setMinimumSize(800, 600)
@@ -40,7 +40,7 @@ class VentanaResultadoDistribucion(QWidget):
 
         # Control grid
         self.combo_grid = QComboBox()
-        self.combo_grid.addItems(["5", "10", "15", "20"])
+        self.combo_grid.addItems(["2_4", "5_5", "10_10", "15_15", "20_20"])
         self.combo_grid.setCurrentText(self.grid_actual)
         self.boton_actualizar = QPushButton("Actualizar grid")
         self.boton_actualizar.clicked.connect(self.actualizar_grid)

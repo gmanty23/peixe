@@ -13,6 +13,7 @@ import tempfile
 
 
 from processing_GUI.procesamiento.analisis import generar_inputs_moment, EstadoProceso
+from processing_GUI.procesamiento.visualizacion_embeddings import visualizar_embeddings_2d, visualizar_embeddings_3d
 
 from PySide6.QtWidgets import QMessageBox
 
@@ -70,7 +71,7 @@ class VentanaAnalisis(QWidget):
         grupo_inputs.setLayout(layout_grupo) 
         layout.addWidget(grupo_inputs)
 
-         # -------- NUEVO GRUPO: CLASIFICACIÓN SUPERVISADA --------
+         # -------- CLASIFICACIÓN SUPERVISADA --------
         grupo_clasif = QGroupBox("Clasificación Supervisada")
         layout_clasif = QVBoxLayout()
 
@@ -140,6 +141,38 @@ class VentanaAnalisis(QWidget):
 
         grupo_clasif.setLayout(layout_clasif)
         layout.addWidget(grupo_clasif)
+
+        # -------- NUEVO GRUPO: VISUALIZACIÓN DE EMBEDDINGS --------
+        grupo_vis = QGroupBox("Visualización de Embeddings")
+        layout_vis = QVBoxLayout()
+
+        # Checkboxes para 2D y 3D
+        from PySide6.QtWidgets import QCheckBox
+        self.checkbox_2d = QCheckBox("Visualizar PCA 2D")
+        self.checkbox_2d.setChecked(True)  # Por defecto activo
+        layout_vis.addWidget(self.checkbox_2d)
+
+        self.checkbox_3d = QCheckBox("Visualizar PCA 3D")
+        layout_vis.addWidget(self.checkbox_3d)
+
+        # Selector de archivo de embeddings
+        vis_input_layout = QHBoxLayout()
+        self.input_line_vis = QLineEdit()
+        self.input_line_vis.setPlaceholderText("Selecciona archivo de embeddings (.npz)")
+        vis_input_btn = QPushButton("Examinar")
+        vis_input_btn.clicked.connect(lambda: self.seleccionar_archivo(self.input_line_vis))
+        vis_input_layout.addWidget(self.input_line_vis)
+        vis_input_layout.addWidget(vis_input_btn)
+        layout_vis.addLayout(vis_input_layout)
+
+        # Botón para lanzar la visualización
+        self.btn_lanzar_vis = QPushButton("Lanzar Visualización")
+        self.btn_lanzar_vis.clicked.connect(self.lanzar_visualizacion_embeddings)
+        layout_vis.addWidget(self.btn_lanzar_vis)
+
+        grupo_vis.setLayout(layout_vis)
+        layout.addWidget(grupo_vis)
+
 
         # Botón volver
         self.boton_atras = QPushButton("Atrás")
@@ -308,3 +341,24 @@ class VentanaAnalisis(QWidget):
 
         self.status_label.setText("✅ Procesamiento completado.")
         print("Clasificación supervisada completada. Revisa la carpeta de salida para los resultados.")
+
+    def seleccionar_archivo(self, target_lineedit):
+        archivo, _ = QFileDialog.getOpenFileName(self, "Seleccionar archivo", "", "Archivos NPZ (*.npz)")
+        if archivo:
+            target_lineedit.setText(archivo)
+
+    def lanzar_visualizacion_embeddings(self):
+        ruta_npz = self.input_line_vis.text()
+        if not ruta_npz or not os.path.exists(ruta_npz):
+            QMessageBox.critical(self, "Error", "Debes seleccionar un archivo válido de embeddings (.npz).")
+            return
+
+        if not self.checkbox_2d.isChecked() and not self.checkbox_3d.isChecked():
+            QMessageBox.warning(self, "Aviso", "Selecciona al menos una opción (2D o 3D).")
+            return
+
+        if self.checkbox_2d.isChecked():
+            visualizar_embeddings_2d(ruta_npz)
+
+        if self.checkbox_3d.isChecked():
+            visualizar_embeddings_3d(ruta_npz)

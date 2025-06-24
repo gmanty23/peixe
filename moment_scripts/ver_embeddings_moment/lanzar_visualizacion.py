@@ -1,0 +1,9 @@
+from moment_scripts.ver_embeddings_moment.visualizador_2d import visualizar_embeddings_2d
+from moment_scripts.ver_embeddings_moment.visualizador_3d import visualizar_embeddings_3d
+from moment_scripts.ver_embeddings_moment.visualizador_patches_3d import visualizar_embeddings_patches_3d
+from moment_scripts.ver_embeddings_moment.visualizador_patches_2d import visualizar_embeddings_patches
+
+visualizar_embeddings_2d("/home/gmanty/code/AnemoNAS/outputs_moment/canales_34_35_36_37_38_39_40_41 (densidad)/embeddings/val_embeddings.npz")
+visualizar_embeddings_3d("/home/gmanty/code/AnemoNAS/outputs_moment/canales_34_35_36_37_38_39_40_41 (densidad)/embeddings/val_embeddings.npz")
+visualizar_embeddings_patches_3d("/home/gmanty/code/AnemoNAS/outputs_moment/canales_34_35_36_37_38_39_40_41 (densidad)/embeddings/val_embeddings.npz")
+visualizar_embeddings_patches("/home/gmanty/code/AnemoNAS/outputs_moment/canales_34_35_36_37_38_39_40_41 (densidad)/embeddings/val_embeddings.npz")

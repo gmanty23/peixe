@@ -4,19 +4,9 @@ import torch
 from torch.utils.data import TensorDataset, DataLoader
 
 def load_npz_files_classified(data_dir, channel_indices):
-    """
-    Carga archivos .npz organizados en subcarpetas de clases y devuelve tensores.
-    
-    Args:
-        data_dir (str): Ruta a la carpeta con las subcarpetas de clases.
-        channel_indices (list): Índices de canales a usar (por ejemplo, [0-7]).
-        
-    Returns:
-        X_tensor: [N, 8, 512]
-        Y_tensor: [N]
-    """
     data_list = []
     label_list = []
+    file_list = []
 
     class_names = sorted(os.listdir(data_dir))
     class_to_idx = {name: idx for idx, name in enumerate(class_names)}
@@ -33,17 +23,16 @@ def load_npz_files_classified(data_dir, channel_indices):
                 selected = arr[channel_indices, :]
                 data_list.append(selected)
                 label_list.append(class_idx)
+                file_list.append(fname)
 
     X = np.stack(data_list)
     Y = np.array(label_list)
-    
+    return X, Y, np.array(file_list)
+
+def create_dataloader(X, Y, batch_size=64):
     X_tensor = torch.tensor(X, dtype=torch.float32)
     Y_tensor = torch.tensor(Y, dtype=torch.long)
-    
-    return X_tensor, Y_tensor
-
-def create_dataloader(X_tensor, Y_tensor, batch_size=64):
-    mask_tensor = torch.ones(X_tensor.shape[0], X_tensor.shape[2], dtype=torch.bool)
+    mask_tensor = torch.ones(X.shape[0], X.shape[2], dtype=torch.bool)
     dataset = TensorDataset(X_tensor, mask_tensor, Y_tensor)
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True)  # ✅ drop_last=True
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=True)
     return dataloader

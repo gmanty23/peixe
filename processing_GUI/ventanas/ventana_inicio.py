@@ -63,7 +63,7 @@ class VentanaInicio(QWidget):
         self.boton_visualizacion = QPushButton("Visualización", self)
         
         # Configurar cursor de mano al pasar por encima de todos los botones
-        for boton in [self.boton_etiquetado, self.boton_postprocesado]:
+        for boton in [self.boton_etiquetado, self.boton_postprocesado, self.boton_analisis, self.boton_visualizacion]:
             boton.setCursor(Qt.PointingHandCursor)
         
         

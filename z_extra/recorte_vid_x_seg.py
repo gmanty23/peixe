@@ -2,7 +2,7 @@ import subprocess
 import os
 import shutil
 
-def recortar_video(input_path, output_path, start_time=240, duration=30):
+def recortar_video(input_path, output_path, start_time=22, duration=20):
     """
     Recorta un vídeo entre start_time y start_time + duration usando FFmpeg.y
 
@@ -35,6 +35,6 @@ def recortar_video(input_path, output_path, start_time=240, duration=30):
 
 # Ejemplo de uso:
 if __name__ == "__main__":
-    input_video = "/home/gmanty/code/calculos_memoria/USCL2-061045-061545_p1.mp4"
-    output_video = "/home/gmanty/code/calculos_memoria/USCL2-061045-061545_p1_recortado.mp4"
+    input_video = "/home/gmanty/code/AnemoNAS/14-12-23/0931/USCL2-092610-093110_p1.mp4"
+    output_video = "/home/gmanty/code/calculos_memoria/_temp_2/USCL2-092610-093110_p1_recortado.mp4"
     recortar_video(input_video, output_video)
