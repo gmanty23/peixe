@@ -5,6 +5,7 @@ from tqdm import tqdm
 import numpy as np
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, precision_score, recall_score, f1_score, balanced_accuracy_score
 import matplotlib.pyplot as plt
+import gc
 
 def save_confusion_matrix(y_true, y_pred, epoch, split, output_dir):
     cm = confusion_matrix(y_true, y_pred)
@@ -81,7 +82,6 @@ def train_moment(model, train_loader, val_loader, class_weights, val_dataset, pa
         avg_val_loss = val_loss / val_total
         save_confusion_matrix(val_y_true, val_y_pred, epoch, "val", os.path.join(output_dir, "metrics"))
 
-        # torch.save(model.state_dict(), os.path.join(output_dir, "models", f"epoch_{epoch+1}.pt"))
         torch.save(model.state_dict(), os.path.join(output_dir, "models", "last_model.pt"))
         if val_acc > best_val_acc:
             best_val_acc = val_acc
@@ -115,11 +115,15 @@ def train_moment(model, train_loader, val_loader, class_weights, val_dataset, pa
 
         update_status(f"Epoch {epoch+1}/{params['epochs']} completado: Val Acc {val_acc:.4f}")
 
+    # Libera memoria antes de embeddings
+    torch.cuda.empty_cache()
+    gc.collect()
+
     save_embeddings(model, val_dataset, device, os.path.join(output_dir, "embeddings"))
 
 def save_embeddings(model, dataset, device, output_dir):
     all_embeddings, all_labels, all_paths = [], [], []
-    loader = torch.utils.data.DataLoader(dataset, batch_size=64, shuffle=False)
+    loader = torch.utils.data.DataLoader(dataset, batch_size=8, shuffle=False)  # Reducido el batch size
     model.eval()
     with torch.no_grad():
         for data, labels, paths in tqdm(loader, desc="Saving embeddings"):
