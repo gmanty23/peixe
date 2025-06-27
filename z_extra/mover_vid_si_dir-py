@@ -1,0 +1,38 @@
+import os
+import shutil
+
+def mover_videos_con_nombres_de_carpetas(dir_origen, dir_destino):
+    # Verificar que los directorios existen
+    if not os.path.isdir(dir_origen):
+        print(f"El directorio de origen '{dir_origen}' no existe.")
+        return
+    if not os.path.isdir(dir_destino):
+        print(f"El directorio de destino '{dir_destino}' no existe.")
+        return
+
+    # Obtener nombres de las carpetas en el directorio destino
+    nombres_carpetas_destino = [
+        nombre for nombre in os.listdir(dir_destino)
+        if os.path.isdir(os.path.join(dir_destino, nombre))
+    ]
+
+    # Extensiones de video comunes
+    extensiones_video = {'.mp4', '.avi', '.mkv', '.mov', '.flv', '.wmv'}
+
+    # Recorrer los archivos del directorio origen
+    for archivo in os.listdir(dir_origen):
+        nombre_base, extension = os.path.splitext(archivo)
+        if extension.lower() in extensiones_video:
+            if nombre_base in nombres_carpetas_destino:
+                origen_path = os.path.join(dir_origen, archivo)
+                destino_path = os.path.join(dir_destino, archivo)
+                print(f"Moviendo '{origen_path}' a '{destino_path}'...")
+                shutil.move(origen_path, destino_path)
+
+    print("Movimiento completado.")
+
+# Ejemplo de uso
+if __name__ == "__main__":
+    dir_origen = input("Introduce el directorio de origen: ")
+    dir_destino = input("Introduce el directorio de destino: ")
+    mover_videos_con_nombres_de_carpetas(dir_origen, dir_destino)

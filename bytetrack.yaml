@@ -1,0 +1,14 @@
+# Configuración para ByteTrack
+# Versión adaptada para peces en pecera (mejor tolerancia a movimiento y detecciones suaves)
+
+# Parámetros de ByteTrack
+conf_thres: 0.25        # Confianza mínima para considerar detecciones
+iou_thres: 0.2          # IOU mínima para asociar cajas entre frames
+track_buffer: 30        # Número de frames que un objeto se mantiene sin verse
+match_thres: 0.8        # Umbral de matching para crear un nuevo track
+frame_rate: 30
+mot20: False
+
+# Estos dos campos se añaden solo si tu versión los requiere explícitamente:
+# tracker_type: bytetrack
+# args: {}

@@ -9,10 +9,13 @@ output
 pretrained/
 workspace
 workspace/
-processing_GUI/cache_intermedio
-environment.yml
-environment_*
-.gitignore  
+processing_GUI/procesamiento/cache
+tracking/classification/dataset_blobs
+tracking/classification/model
+tracking/classification/training_metrics
+runs/
+z_yolo_model_tests/datasets/
+*Zone.Identifier
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -145,5 +148,4 @@ dmypy.json
 .pyre/
 
 Miniconda3*
-requirements*
 
