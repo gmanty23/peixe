@@ -10,13 +10,13 @@ pretrained/
 workspace
 workspace/
 processing_GUI/procesamiento/cache
-tracking/classification/dataset_blobs
-tracking/classification/model
-tracking/classification/training_metrics
 runs/
-z_yolo_model_tests/datasets/
+z_yolo_model_tests/
 *Zone.Identifier
-
+ukwn*
+yolo11n.pt
+yolov8s.pt
+tracking/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
