@@ -57,8 +57,8 @@ class VentanaInicio(QWidget):
         
         # Crear los botones
         # self.boton_preprocesado = QPushButton("Preprocesado", self)
-        self.boton_etiquetado = QPushButton("Etiquetado", self)
-        self.boton_postprocesado = QPushButton("Postprocesado", self)
+        self.boton_etiquetado = QPushButton("Detección", self)
+        self.boton_postprocesado = QPushButton("Descriptores Estadísticos", self)
         self.boton_analisis = QPushButton("Análisis", self)
         self.boton_visualizacion = QPushButton("Visualización", self)
         
