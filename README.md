@@ -94,11 +94,11 @@ Además, el directorio `z_miscelanea/` contiene scripts auxiliares para codifica
 
 *Métricas derivadas de bounding boxes.*
 
-![Métricas Masks](imgs_readme/metricas_masks_2.pmg)
+![Métricas Masks](imgs_readme/metricas_masks_2.png)
 
 *Métricas espaciales a partir de máscaras binarias.*
 
-![Métricas Trayectorias](imgs_readme/metricas_trayectorias_2,png)
+![Métricas Trayectorias](imgs_readme/metricas_trayectorias_2.png)
 
 *Métricas dinámicas de trayectorias por ID.*
 
