@@ -39,7 +39,7 @@ class VentanaResultadoCentroMasa(QMainWindow):
         self.frame_actual_leido = -1
         self.frame_cache = None
 
-        self.recorte = cargar_recorte(self.carpeta_base)
+        self.recorte_mask, _ = cargar_recorte(self.carpeta_base)
         self.output_dims = cargar_output_dims(os.path.join(self.carpeta_base, "máscaras"))
 
         self.trayectoria = []  # <--- trayectoria acumulada
@@ -112,8 +112,8 @@ class VentanaResultadoCentroMasa(QMainWindow):
 
         frame = self.frame_cache.copy()
 
-        if self.recorte:
-            frame = aplicar_recorte(frame, self.recorte)
+        if self.recorte_mask:
+            frame = aplicar_recorte(frame, self.recorte_mask)
             frame = cv2.resize(frame, self.output_dims, interpolation=cv2.INTER_LINEAR)
 
         centro = cargar_centro_masa(self.carpeta_base, self.frame_idx)

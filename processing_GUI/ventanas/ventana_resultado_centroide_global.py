@@ -39,7 +39,7 @@ class VentanaResultadoCentroideGrupal(QMainWindow):
         self.frame_actual_leido = -1
         self.frame_cache = None
 
-        self.recorte = cargar_recorte(self.carpeta_base)
+        _, self.recorte_bbox = cargar_recorte(self.carpeta_base)
         self.output_dims = cargar_output_dims(os.path.join(self.carpeta_base, "bbox"))
         self.json_centroide = os.path.join(self.carpeta_base, "bbox_stats", "distancia_centroide_grupal.json")
 
@@ -111,8 +111,8 @@ class VentanaResultadoCentroideGrupal(QMainWindow):
 
         frame = self.frame_cache.copy()
 
-        if self.recorte:
-            frame = aplicar_recorte(frame, self.recorte)
+        if self.recorte_bbox:
+            frame = aplicar_recorte(frame, self.recorte_bbox)
             frame = cv2.resize(frame, self.output_dims, interpolation=cv2.INTER_LINEAR)
 
         # Leer trayectoria completa (una vez)

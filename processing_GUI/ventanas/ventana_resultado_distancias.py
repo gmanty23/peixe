@@ -48,7 +48,7 @@ class VentanaResultadoDistancias(QMainWindow):
         self.frame_actual_leido = -1
         self.frame_cache = None
 
-        self.recorte = cargar_recorte(self.carpeta_base)
+        _, self.recorte_bbox = cargar_recorte(self.carpeta_base)
         self.output_dims = cargar_output_dims(os.path.join(self.carpeta_base, "bbox"))
 
         self.timer = QTimer()
@@ -119,8 +119,8 @@ class VentanaResultadoDistancias(QMainWindow):
 
         frame = self.frame_cache.copy()
 
-        if self.recorte:
-            frame = aplicar_recorte(frame, self.recorte)
+        if self.recorte_bbox:
+            frame = aplicar_recorte(frame, self.recorte_bbox)
             frame = cv2.resize(frame, self.output_dims, interpolation=cv2.INTER_LINEAR)
 
         centroides, agrupados = cargar_centroides_agrupados(self.carpeta_base, self.frame_idx)
