@@ -132,15 +132,6 @@ python main.py
 
 ---
 
-## ✅ Mejoras Futuras
-
-- [ ] Inclusión de `requirements.txt` con todas las dependencias necesarias.
-- [ ] Incorporación de un conjunto de datos de demostración y vídeos de ejemplo.
-- [ ] Documentación detallada de formatos de entrada y salida.
-- [ ] Script de demostración (`script_demo.py`) para ejecutar el sistema sin GUI.
-
----
-
 ## 📜 Licencia
 
 Este software ha sido desarrollado como parte de un trabajo académico en la ETSIT – Universidad Politécnica de Madrid. Su uso está autorizado para fines educativos y de investigación, siempre que se cite adecuadamente al autor y al proyecto original.
